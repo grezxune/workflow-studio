@@ -22,7 +22,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js')
     },
     titleBarStyle: 'default',
-    backgroundColor: '#1a1a2e',
+    backgroundColor: '#09090B',
     show: false
   });
 
