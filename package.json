@@ -1,0 +1,31 @@
+{
+  "name": "workflow-studio",
+  "version": "1.0.0",
+  "description": "Personal productivity toolkit for automating repetitive tasks",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win",
+    "dev": "electron ."
+  },
+  "author": "Grez Studios",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0"
+  },
+  "build": {
+    "appId": "com.grezstudios.workflowstudio",
+    "productName": "Workflow Studio",
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "directories": {
+      "output": "dist"
+    }
+  }
+}

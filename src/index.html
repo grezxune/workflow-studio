@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+  <title>Script Runner</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>Script Runner</h1>
+      <p class="subtitle">Manage scripts & global hotkeys</p>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="scripts">Scripts</button>
+      <button class="tab" data-tab="hotkeys">Hotkeys</button>
+      <button class="settings-btn" id="settings-btn" title="Settings">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"></path>
+        </svg>
+      </button>
+    </nav>
+
+    <main class="content">
+      <!-- Scripts Panel -->
+      <section id="scripts-panel" class="panel active">
+        <div class="panel-header">
+          <h2>Scripts</h2>
+          <div class="panel-actions">
+            <button id="refresh-scripts" class="btn btn-secondary">Refresh</button>
+            <button id="open-folder" class="btn btn-primary">Open Folder</button>
+          </div>
+        </div>
+
+        <div id="scripts-list" class="scripts-list">
+          <div class="empty-state">
+            <p>No scripts found</p>
+            <p class="hint">Add .py, .js, or .lua files to the scripts folder</p>
+          </div>
+        </div>
+
+        <div class="output-section">
+          <h3>Output</h3>
+          <div id="output-log" class="output-log"></div>
+        </div>
+      </section>
+
+      <!-- Hotkeys Panel -->
+      <section id="hotkeys-panel" class="panel">
+        <div class="panel-header">
+          <h2>Global Hotkeys</h2>
+          <button id="add-hotkey" class="btn btn-primary">Add Hotkey</button>
+        </div>
+
+        <div id="hotkeys-list" class="hotkeys-list">
+          <div class="empty-state">
+            <p>No hotkeys configured</p>
+            <p class="hint">Click "Add Hotkey" to create one</p>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Settings</h3>
+        <button class="modal-close" id="settings-close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="scripts-dir">Scripts Directory</label>
+          <div class="input-with-button">
+            <input type="text" id="scripts-dir" placeholder="/path/to/scripts" />
+            <button id="browse-dir" class="btn btn-secondary">Browse</button>
+          </div>
+          <p class="form-hint">Location where your scripts are stored</p>
+        </div>
+
+        <div class="settings-divider"></div>
+        <h4 class="settings-section-title">Script Commands</h4>
+
+        <div class="form-group">
+          <label for="cmd-python">Python (.py)</label>
+          <input type="text" id="cmd-python" placeholder="python3" />
+        </div>
+
+        <div class="form-group">
+          <label for="cmd-js">JavaScript (.js)</label>
+          <input type="text" id="cmd-js" placeholder="node" />
+        </div>
+
+        <div class="form-group">
+          <label for="cmd-lua">Lua (.lua)</label>
+          <input type="text" id="cmd-lua" placeholder="lua" />
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="cancel-settings" class="btn btn-secondary">Cancel</button>
+        <button id="save-settings" class="btn btn-primary">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hotkey Modal -->
+  <div id="hotkey-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-title">Add Hotkey</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Hotkey Combination</label>
+          <div id="hotkey-recorder" class="hotkey-recorder" tabindex="0">
+            <span class="recorder-text">Click to record hotkey</span>
+            <span class="recorder-hint">Press Escape to cancel</span>
+          </div>
+          <div id="recorded-keys" class="recorded-keys"></div>
+        </div>
+
+        <div class="form-group">
+          <label for="hotkey-text">Text to Type</label>
+          <textarea id="hotkey-text" rows="3" placeholder="Enter the text to type when hotkey is pressed..."></textarea>
+        </div>
+
+        <div class="form-group checkbox-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="press-enter">
+            <span class="checkmark"></span>
+            Press Enter after typing
+          </label>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="cancel-hotkey" class="btn btn-secondary">Cancel</button>
+        <button id="save-hotkey" class="btn btn-primary">Save Hotkey</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
