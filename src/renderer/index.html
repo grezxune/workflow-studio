@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+  <title>Workflow Studio</title>
+  <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="styles/components.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Titlebar (macOS style) -->
+    <header class="titlebar" id="titlebar">
+      <div class="titlebar-drag"></div>
+      <div class="titlebar-content">
+        <div class="logo">
+          <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+          <span class="logo-text">Workflow Studio</span>
+        </div>
+        <nav class="nav-tabs" id="nav-tabs">
+          <button class="nav-tab active" data-view="workflows">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>
+            </svg>
+            Workflows
+          </button>
+          <button class="nav-tab" data-view="editor">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+            Editor
+          </button>
+          <button class="nav-tab" data-view="settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            Settings
+          </button>
+        </nav>
+        <div class="titlebar-actions">
+          <button class="status-indicator" id="status-indicator" title="Idle">
+            <span class="status-dot idle"></span>
+            <span class="status-text">Idle</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content" id="main-content">
+      <!-- Workflows View -->
+      <section class="view active" id="view-workflows">
+        <div class="view-header">
+          <h1>Workflows</h1>
+          <div class="view-actions">
+            <button class="btn btn-secondary" id="btn-import-workflow" title="Import workflow from file">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              Import
+            </button>
+            <button class="btn btn-primary" id="btn-new-workflow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              New Workflow
+            </button>
+          </div>
+        </div>
+
+        <!-- Recent Workflows -->
+        <div class="recent-workflows" id="recent-workflows">
+          <h3>Recent</h3>
+          <div class="recent-list" id="recent-workflows-list">
+            <!-- Recent workflow items will be inserted here -->
+          </div>
+        </div>
+
+        <div class="workflow-grid" id="workflow-grid">
+          <!-- Workflow cards will be inserted here -->
+          <div class="empty-state" id="empty-workflows">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>
+            </svg>
+            <h3>No workflows yet</h3>
+            <p>Create your first workflow to start automating tasks</p>
+            <button class="btn btn-primary" id="btn-new-workflow-empty">Create Workflow</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Editor View -->
+      <section class="view" id="view-editor">
+        <div class="editor-layout">
+          <!-- Action Palette -->
+          <aside class="action-palette" id="action-palette">
+            <h3>Actions</h3>
+            <div class="action-list" id="action-list">
+              <!-- Action items will be inserted here -->
+            </div>
+          </aside>
+
+          <!-- Editor Canvas -->
+          <div class="editor-canvas" id="editor-canvas">
+            <div class="editor-toolbar">
+              <div class="workflow-info">
+                <input type="text" class="workflow-name-input" id="workflow-name" placeholder="Workflow Name" value="Untitled Workflow">
+              </div>
+              <div class="toolbar-actions">
+                <button class="btn btn-icon" id="btn-dry-run" title="Dry Run (F9)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                </button>
+                <button class="btn btn-icon" id="btn-run" title="Run (F5)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="5 3 19 12 5 21 5 3"/>
+                  </svg>
+                </button>
+                <button class="btn btn-icon btn-danger hidden" id="btn-stop" title="Stop (F7)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="action-sequence" id="action-sequence">
+              <div class="empty-sequence">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M12 5v14M5 12h14"/>
+                </svg>
+                <p>Drag actions here to build your workflow</p>
+              </div>
+            </div>
+
+            <div class="editor-footer">
+              <div class="loop-settings">
+                <label>Loop:</label>
+                <input type="number" id="loop-count" min="1" max="9999" value="1">
+                <label>times with</label>
+                <input type="number" id="loop-delay-min" min="0" max="60000" value="500">
+                <span>-</span>
+                <input type="number" id="loop-delay-max" min="0" max="60000" value="1000">
+                <label>ms delay</label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Action Config Panel -->
+          <aside class="config-panel hidden" id="config-panel">
+            <div class="config-header">
+              <h3 id="config-title">Configure Action</h3>
+              <button class="btn btn-icon" id="btn-close-config">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <div class="config-body" id="config-body">
+              <!-- Dynamic config content -->
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- Settings View -->
+      <section class="view" id="view-settings">
+        <div class="settings-layout">
+          <h1>Settings</h1>
+
+          <div class="settings-section">
+            <h2>Storage</h2>
+            <div class="setting-item">
+              <label>Workflows Directory</label>
+              <div class="input-group">
+                <input type="text" id="workflows-dir" readonly>
+                <button class="btn btn-secondary" id="btn-browse-dir">Browse</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h2>Safety</h2>
+            <div class="setting-item">
+              <label>Panic Hotkey (Emergency Stop)</label>
+              <div class="input-group">
+                <input type="text" id="panic-hotkey" readonly value="F7">
+                <button class="btn btn-secondary" id="btn-set-hotkey">Change</button>
+              </div>
+              <p class="setting-hint">Press this key to immediately stop all automation</p>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h2>Mouse Movement</h2>
+            <div class="setting-item">
+              <label>Click Jitter</label>
+              <div class="toggle-group">
+                <input type="checkbox" id="click-jitter-enabled" checked>
+                <label for="click-jitter-enabled">Enable slight position variation for natural clicking</label>
+              </div>
+            </div>
+            <div class="setting-item">
+              <label>Jitter Radius (pixels)</label>
+              <input type="range" id="jitter-radius" min="1" max="10" value="3">
+              <span class="range-value" id="jitter-radius-value">3</span>
+            </div>
+            <div class="setting-item">
+              <label>Overshoot</label>
+              <div class="toggle-group">
+                <input type="checkbox" id="overshoot-enabled" checked>
+                <label for="overshoot-enabled">Enable occasional overshoot and correction</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h2>Typing</h2>
+            <div class="setting-item">
+              <label>Default Typing Speed (ms per character)</label>
+              <div class="range-inputs">
+                <input type="number" id="typing-speed-min" min="10" max="500" value="50">
+                <span>to</span>
+                <input type="number" id="typing-speed-max" min="10" max="500" value="150">
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h2>Execution History</h2>
+            <div class="history-panel">
+              <div class="history-header">
+                <h3>Recent Executions</h3>
+                <button class="btn btn-secondary btn-sm" id="btn-clear-history">Clear</button>
+              </div>
+              <div class="history-list" id="history-list">
+                <!-- Execution history items will be inserted here -->
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h2>Image Templates</h2>
+            <div class="setting-item">
+              <p class="setting-hint" style="margin-bottom: var(--space-3)">Captured images used for detection actions</p>
+              <div class="image-gallery" id="image-gallery">
+                <!-- Image templates will be inserted here -->
+              </div>
+              <button class="btn btn-secondary" id="btn-capture-template">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                  <circle cx="8.5" cy="8.5" r="1.5"/>
+                  <polyline points="21 15 16 10 5 21"/>
+                </svg>
+                Capture New Template
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Execution Overlay -->
+    <div class="execution-overlay hidden" id="execution-overlay">
+      <div class="execution-status">
+        <div class="execution-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+        </div>
+        <h2 id="execution-workflow-name">Running Workflow</h2>
+        <div class="execution-progress">
+          <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+          <span id="execution-progress-text">Loop 1/1 - Action 0/0</span>
+        </div>
+        <p class="execution-action" id="execution-action">Initializing...</p>
+        <div class="execution-actions">
+          <button class="btn btn-secondary" id="btn-pause-execution">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="6" y="4" width="4" height="16"/>
+              <rect x="14" y="4" width="4" height="16"/>
+            </svg>
+            Pause
+          </button>
+          <button class="btn btn-danger" id="btn-stop-execution">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            </svg>
+            Stop (F7)
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Container -->
+    <div class="modal-overlay hidden" id="modal-overlay">
+      <div class="modal" id="modal">
+        <div class="modal-header">
+          <h3 id="modal-title">Modal Title</h3>
+          <button class="btn btn-icon" id="modal-close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body" id="modal-body">
+          <!-- Dynamic content -->
+        </div>
+        <div class="modal-footer" id="modal-footer">
+          <!-- Dynamic buttons -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
+  </div>
+
+  <script src="js/app.js"></script>
+  <script src="js/workflows.js"></script>
+  <script src="js/editor.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/execution.js"></script>
+</body>
+</html>

@@ -1,0 +1,324 @@
+/**
+ * IPC Handlers
+ *
+ * Bridge between main process and renderer
+ */
+
+import fs from 'fs';
+import { ipcMain, dialog } from 'electron';
+import { IPC_CHANNELS } from '../../shared/constants.js';
+import { getStorageService } from '../services/storage.js';
+import { getWorkflowExecutor } from '../services/workflow-executor.js';
+import { getSafetyService } from '../services/safety.js';
+import { getDetectionService } from '../services/detection.js';
+import { getMouseController } from '../services/mouse-controller.js';
+
+let mainWindow = null;
+
+export function initializeIPC(window) {
+  mainWindow = window;
+
+  const storage = getStorageService();
+  const executor = getWorkflowExecutor({
+    detectionService: getDetectionService()
+  });
+  const safety = getSafetyService();
+  const detection = getDetectionService();
+
+  safety.onPanic(async (source) => {
+    await executor.emergencyStop();
+    sendToRenderer(IPC_CHANNELS.EXECUTION_STOPPED, { source });
+  });
+
+  setupExecutorEvents(executor);
+  registerWorkflowHandlers(storage);
+  registerExecutionHandlers(executor);
+  registerSettingsHandlers(storage);
+  registerDetectionHandlers(detection);
+  registerSafetyHandlers(safety);
+  registerUtilityHandlers();
+}
+
+function sendToRenderer(channel, data) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, data);
+  }
+}
+
+function setupExecutorEvents(executor) {
+  executor.on('workflow:start', (data) => {
+    sendToRenderer(IPC_CHANNELS.EXECUTION_STARTED, data);
+  });
+
+  executor.on('workflow:complete', (data) => {
+    sendToRenderer(IPC_CHANNELS.EXECUTION_COMPLETED, data);
+  });
+
+  executor.on('workflow:stopped', (data) => {
+    sendToRenderer(IPC_CHANNELS.EXECUTION_STOPPED, data);
+  });
+
+  executor.on('workflow:error', (data) => {
+    sendToRenderer(IPC_CHANNELS.EXECUTION_ERROR, { error: data.error.message });
+  });
+
+  executor.on('workflow:paused', () => {
+    sendToRenderer(IPC_CHANNELS.EXECUTION_PAUSED, {});
+  });
+
+  executor.on('workflow:resumed', () => {
+    sendToRenderer(IPC_CHANNELS.EXECUTION_RESUMED, {});
+  });
+
+  executor.on('action:start', (data) => {
+    sendToRenderer(IPC_CHANNELS.ACTION_STARTED, data);
+  });
+
+  executor.on('action:complete', (data) => {
+    sendToRenderer(IPC_CHANNELS.ACTION_COMPLETED, data);
+  });
+
+  executor.on('action:error', (data) => {
+    sendToRenderer(IPC_CHANNELS.ACTION_ERROR, { ...data, error: data.error.message });
+  });
+
+  executor.on('loop:start', (data) => {
+    sendToRenderer(IPC_CHANNELS.LOOP_STARTED, data);
+  });
+
+  executor.on('loop:end', (data) => {
+    sendToRenderer(IPC_CHANNELS.LOOP_COMPLETED, data);
+  });
+
+  executor.on('state:change', (data) => {
+    sendToRenderer(IPC_CHANNELS.EXECUTION_STATE_CHANGED, data);
+  });
+}
+
+function registerWorkflowHandlers(storage) {
+  ipcMain.handle(IPC_CHANNELS.GET_WORKFLOWS, async () => {
+    return storage.getAllWorkflows();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GET_WORKFLOW, async (event, id) => {
+    return storage.getWorkflow(id);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CREATE_WORKFLOW, async (event, data) => {
+    return storage.createWorkflow(data);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.UPDATE_WORKFLOW, async (event, { id, updates }) => {
+    return storage.updateWorkflow(id, updates);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.DELETE_WORKFLOW, async (event, id) => {
+    return storage.deleteWorkflow(id);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.DUPLICATE_WORKFLOW, async (event, id) => {
+    return storage.duplicateWorkflow(id);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.EXPORT_WORKFLOW, async (event, id) => {
+    const json = storage.exportWorkflow(id);
+    if (!json) return null;
+
+    const { filePath } = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export Workflow',
+      defaultPath: `workflow-${id}.json`,
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    });
+
+    if (filePath) {
+      fs.writeFileSync(filePath, json, 'utf-8');
+      return filePath;
+    }
+    return null;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.IMPORT_WORKFLOW, async () => {
+    const { filePaths } = await dialog.showOpenDialog(mainWindow, {
+      title: 'Import Workflow',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+      properties: ['openFile']
+    });
+
+    if (filePaths && filePaths.length > 0) {
+      const json = fs.readFileSync(filePaths[0], 'utf-8');
+      return storage.importWorkflow(json);
+    }
+    return null;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GET_RECENT_WORKFLOWS, async () => {
+    return storage.getRecentWorkflows();
+  });
+}
+
+function registerExecutionHandlers(executor) {
+  ipcMain.handle(IPC_CHANNELS.EXECUTE_WORKFLOW, async (event, { workflow, options }) => {
+    try {
+      await executor.execute(workflow, options);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PAUSE_EXECUTION, async () => {
+    executor.pause();
+    return { success: true };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.RESUME_EXECUTION, async () => {
+    executor.resume();
+    return { success: true };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.STOP_EXECUTION, async () => {
+    executor.stop();
+    return { success: true };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.EMERGENCY_STOP, async () => {
+    await executor.emergencyStop();
+    return { success: true };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GET_EXECUTION_STATUS, async () => {
+    return executor.getStatus();
+  });
+}
+
+function registerSettingsHandlers(storage) {
+  ipcMain.handle(IPC_CHANNELS.GET_SETTINGS, async () => {
+    return storage.getSettings();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.UPDATE_SETTINGS, async (event, updates) => {
+    return storage.updateSettings(updates);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GET_SETTING, async (event, key) => {
+    return storage.getSetting(key);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SET_SETTING, async (event, { key, value }) => {
+    storage.setSetting(key, value);
+    return { success: true };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SELECT_DIRECTORY, async (event, options = {}) => {
+    const { filePaths } = await dialog.showOpenDialog(mainWindow, {
+      title: options.title || 'Select Directory',
+      properties: ['openDirectory', 'createDirectory'],
+      defaultPath: options.defaultPath
+    });
+
+    return filePaths && filePaths.length > 0 ? filePaths[0] : null;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GET_WORKFLOWS_DIR, async () => {
+    return storage.getWorkflowsDir();
+  });
+}
+
+function registerDetectionHandlers(detection) {
+  ipcMain.handle(IPC_CHANNELS.CAPTURE_SCREEN, async (event, options = {}) => {
+    return await detection.captureScreen(options.region);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CAPTURE_REGION, async (event, { region, name }) => {
+    return await detection.captureTemplate(region, name);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.FIND_IMAGE, async (event, { imageId, options }) => {
+    return await detection.findImage(imageId, options);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.FIND_PIXEL, async (event, { color, options }) => {
+    return await detection.findPixel(color, options);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GET_PIXEL_COLOR, async (event, { x, y }) => {
+    return await detection.getPixelColor(x, y);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GET_SCREEN_SIZE, async () => {
+    return await detection.getScreenSize();
+  });
+
+  const storage = getStorageService();
+
+  ipcMain.handle(IPC_CHANNELS.GET_IMAGES, async () => {
+    return storage.getAllImages();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.DELETE_IMAGE, async (event, id) => {
+    return storage.deleteImage(id);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SAVE_IMAGE, async (event, { id, buffer }) => {
+    return storage.saveImage(id, Buffer.from(buffer));
+  });
+}
+
+function registerSafetyHandlers(safety) {
+  ipcMain.handle(IPC_CHANNELS.SET_PANIC_HOTKEY, async (event, hotkey) => {
+    safety.setPanicHotkey(hotkey);
+    return { success: true };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GET_SAFETY_CONFIG, async () => {
+    return safety.getConfig();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TRIGGER_PANIC, async () => {
+    safety.triggerPanic('manual');
+    return { success: true };
+  });
+}
+
+function registerUtilityHandlers() {
+  const mouse = getMouseController();
+
+  ipcMain.handle(IPC_CHANNELS.GET_MOUSE_POSITION, async () => {
+    return await mouse.getPosition();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.MINIMIZE_WINDOW, async () => {
+    if (mainWindow) {
+      mainWindow.minimize();
+    }
+    return { success: true };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CLOSE_WINDOW, async () => {
+    if (mainWindow) {
+      mainWindow.close();
+    }
+    return { success: true };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.MAXIMIZE_WINDOW, async () => {
+    if (mainWindow) {
+      if (mainWindow.isMaximized()) {
+        mainWindow.unmaximize();
+      } else {
+        mainWindow.maximize();
+      }
+    }
+    return { success: true };
+  });
+}
+
+export function cleanupIPC() {
+  Object.values(IPC_CHANNELS).forEach(channel => {
+    ipcMain.removeHandler(channel);
+  });
+
+  getSafetyService().destroy();
+}
+
+export { sendToRenderer };

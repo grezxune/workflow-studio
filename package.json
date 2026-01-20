@@ -1,12 +1,16 @@
 {
   "name": "workflow-studio",
   "version": "1.0.0",
-  "description": "Personal productivity toolkit for automating repetitive tasks",
-  "main": "src/main.js",
+  "description": "Premium workflow automation tool for gamers - automate repetitive tasks with human-like behavior",
+  "type": "module",
+  "main": "src/main/index.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --win",
-    "dev": "electron ."
+    "dev": "electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
   },
   "author": "Grez Studios",
   "license": "MIT",
@@ -15,14 +19,30 @@
     "electron-builder": "^24.9.1"
   },
   "dependencies": {
-    "electron-store": "^8.1.0"
+    "@nut-tree-fork/nut-js": "^4.2.2",
+    "better-sqlite3": "^11.0.0",
+    "electron-squirrel-startup": "^1.0.1",
+    "electron-store": "^11.0.2",
+    "uuid": "^9.0.1"
   },
   "build": {
     "appId": "com.grezstudios.workflowstudio",
     "productName": "Workflow Studio",
+    "files": [
+      "src/**/*"
+    ],
     "win": {
       "target": "nsis",
       "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "assets/icon.png",
+      "category": "Utility"
     },
     "directories": {
       "output": "dist"
