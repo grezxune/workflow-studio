@@ -9,6 +9,7 @@ import { getMouseController } from './mouse-controller.js';
 import { getKeyboardController } from './keyboard-controller.js';
 import { sleep, randomDelay } from '../lib/humanize.js';
 import { ACTION_TYPES, EXECUTION_STATES } from '../../shared/constants.js';
+import { hasAccessibilityPermission, requestAccessibilityPermission } from '../lib/permissions.js';
 
 class WorkflowExecutor extends EventEmitter {
   constructor(options = {}) {
@@ -29,8 +30,20 @@ class WorkflowExecutor extends EventEmitter {
   }
 
   async execute(workflow, options = {}) {
+    console.log('[Executor] execute() called with options:', JSON.stringify(options));
+
     if (this.state === EXECUTION_STATES.RUNNING) {
       throw new Error('Another workflow is already running');
+    }
+
+    // Check for accessibility permissions on macOS
+    if (process.platform === 'darwin' && !options.dryRun) {
+      if (!hasAccessibilityPermission()) {
+        console.log('[Executor] Accessibility permission not granted, requesting...');
+        requestAccessibilityPermission();
+        throw new Error('Accessibility permission required. Please grant access in System Preferences > Security & Privacy > Privacy > Accessibility, then try again.');
+      }
+      console.log('[Executor] Accessibility permission granted');
     }
 
     this.currentWorkflow = workflow;
@@ -39,6 +52,9 @@ class WorkflowExecutor extends EventEmitter {
     this.isPaused = false;
     this.shouldStop = false;
     this.dryRun = options.dryRun || false;
+
+    console.log(`[Executor] Starting workflow: ${workflow.name}`);
+    console.log(`[Executor] Actions: ${workflow.actions?.length || 0}, Loops: ${workflow.loopCount || 1}, DryRun: ${this.dryRun}`);
 
     const totalLoops = workflow.loopCount || 1;
 
@@ -79,6 +95,7 @@ class WorkflowExecutor extends EventEmitter {
   }
 
   async executeActions(actions) {
+    console.log(`[Executor] Executing ${actions.length} actions`);
     for (let i = 0; i < actions.length && !this.shouldStop; i++) {
       this.currentActionIndex = i;
 
@@ -89,8 +106,10 @@ class WorkflowExecutor extends EventEmitter {
       if (this.shouldStop) break;
 
       const action = actions[i];
+      console.log(`[Executor] Action ${i + 1}/${actions.length}: ${action.type}`);
       await this.executeAction(action, i, actions.length);
     }
+    console.log('[Executor] All actions completed');
   }
 
   async executeAction(action, index, total) {
@@ -102,7 +121,9 @@ class WorkflowExecutor extends EventEmitter {
         return;
       }
 
-      if (this.dryRun) {
+      console.log(`[Executor] dryRun check: ${this.dryRun} (type: ${typeof this.dryRun})`);
+      if (this.dryRun === true) {
+        console.log('[Executor] Dry run mode - skipping actual execution');
         this.emit('action:dryrun', { action, index });
         await sleep(100);
       } else {
@@ -116,9 +137,12 @@ class WorkflowExecutor extends EventEmitter {
 
       this.emit('action:complete', { action, index, total });
     } catch (error) {
+      console.error(`[Executor] Action ${index + 1} (${action.type}) error:`, error.message);
+      console.error('[Executor] Full error:', error);
       this.emit('action:error', { action, index, error });
 
       if (action.continueOnError) {
+        console.log('[Executor] Continuing despite error (continueOnError=true)');
         return;
       }
       throw error;
@@ -126,6 +150,7 @@ class WorkflowExecutor extends EventEmitter {
   }
 
   async performAction(action) {
+    console.log(`[Executor] Performing action: ${action.type}`, action);
     switch (action.type) {
       case ACTION_TYPES.MOUSE_MOVE:
         await this.performMouseMove(action);
@@ -173,7 +198,9 @@ class WorkflowExecutor extends EventEmitter {
       targetY = this.lastDetection.y + (action.offsetY || 0);
     }
 
+    console.log(`[Executor] Mouse move to (${targetX}, ${targetY})`);
     await this.mouseController.moveTo(targetX, targetY, { speed: action.speed });
+    console.log('[Executor] Mouse move complete');
   }
 
   async performMouseClick(action) {
@@ -212,7 +239,9 @@ class WorkflowExecutor extends EventEmitter {
       const duration = typeof action.duration === 'object'
         ? randomDelay(action.duration.min, action.duration.max)
         : action.duration;
+      console.log(`[Executor] Waiting for ${duration}ms`);
       await sleep(duration);
+      console.log('[Executor] Wait complete');
     } else if (action.waitFor === 'image' && this.detectionService) {
       await this.waitForImage(action);
     } else if (action.waitFor === 'pixel' && this.detectionService) {

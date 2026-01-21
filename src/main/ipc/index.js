@@ -12,6 +12,7 @@ import { getWorkflowExecutor } from '../services/workflow-executor.js';
 import { getSafetyService } from '../services/safety.js';
 import { getDetectionService } from '../services/detection.js';
 import { getMouseController } from '../services/mouse-controller.js';
+import { getPermissionStatus, requestAccessibilityPermission } from '../lib/permissions.js';
 
 let mainWindow = null;
 
@@ -97,7 +98,15 @@ function setupExecutorEvents(executor) {
 
 function registerWorkflowHandlers(storage) {
   ipcMain.handle(IPC_CHANNELS.GET_WORKFLOWS, async () => {
-    return storage.getAllWorkflows();
+    try {
+      console.log('[IPC] GET_WORKFLOWS called');
+      const workflows = storage.getAllWorkflows();
+      console.log('[IPC] Returning', workflows.length, 'workflows');
+      return workflows;
+    } catch (error) {
+      console.error('[IPC] GET_WORKFLOWS error:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle(IPC_CHANNELS.GET_WORKFLOW, async (event, id) => {
@@ -158,10 +167,13 @@ function registerWorkflowHandlers(storage) {
 
 function registerExecutionHandlers(executor) {
   ipcMain.handle(IPC_CHANNELS.EXECUTE_WORKFLOW, async (event, { workflow, options }) => {
+    console.log('[IPC] EXECUTE_WORKFLOW received');
+    console.log('[IPC] Options:', JSON.stringify(options));
     try {
       await executor.execute(workflow, options);
       return { success: true };
     } catch (error) {
+      console.error('[IPC] Execute error:', error.message);
       return { success: false, error: error.message };
     }
   });
@@ -285,6 +297,15 @@ function registerUtilityHandlers() {
 
   ipcMain.handle(IPC_CHANNELS.GET_MOUSE_POSITION, async () => {
     return await mouse.getPosition();
+  });
+
+  // Permission checking
+  ipcMain.handle('permissions:get-status', async () => {
+    return getPermissionStatus();
+  });
+
+  ipcMain.handle('permissions:request-accessibility', async () => {
+    return requestAccessibilityPermission();
   });
 
   ipcMain.handle(IPC_CHANNELS.MINIMIZE_WINDOW, async () => {

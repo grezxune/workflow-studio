@@ -564,10 +564,43 @@ async function runCurrentWorkflow(dryRun = false) {
     return;
   }
 
+  // Check permissions first (macOS)
+  if (window.platform.isMac && !dryRun) {
+    try {
+      const status = await window.workflowAPI.getPermissionStatus();
+      if (!status.accessibility) {
+        showModal('Accessibility Permission Required', `
+          <p>Workflow Studio needs Accessibility permission to control your mouse and keyboard.</p>
+          <p>Please grant access in:</p>
+          <ol style="margin: 12px 0; padding-left: 20px;">
+            <li>Open System Preferences</li>
+            <li>Go to Security & Privacy > Privacy</li>
+            <li>Select Accessibility</li>
+            <li>Add and enable Workflow Studio</li>
+          </ol>
+          <p>After granting permission, try running the workflow again.</p>
+        `, [
+          { label: 'Request Permission', primary: true, onClick: async () => {
+            await window.workflowAPI.requestAccessibilityPermission();
+          }},
+          { label: 'Cancel', class: 'btn-secondary' }
+        ]);
+        return;
+      }
+    } catch (err) {
+      console.warn('Could not check permissions:', err);
+    }
+  }
+
   const result = await window.workflowAPI.executeWorkflow(state.currentWorkflow, { dryRun });
 
   if (!result.success) {
-    showToast('error', 'Error', result.error || 'Failed to start');
+    // Check if it's a permission error
+    if (result.error && result.error.includes('Accessibility permission')) {
+      showToast('error', 'Permission Required', 'Grant Accessibility permission in System Preferences');
+    } else {
+      showToast('error', 'Error', result.error || 'Failed to start');
+    }
   }
 }
 
@@ -651,15 +684,13 @@ function renderConfigFields(action, index) {
       });
 
       document.getElementById('btn-pick-position').addEventListener('click', async () => {
-        showToast('info', 'Pick Position', 'Move your mouse and click...');
-        // This would minimize window and capture click position
-        // For now, just get current position
-        const pos = await window.workflowAPI.getMousePosition();
-        document.getElementById('config-x').value = pos.x;
-        document.getElementById('config-y').value = pos.y;
-        action.x = pos.x;
-        action.y = pos.y;
-        updateAction(index, action);
+        await pickPositionFromScreen((pos) => {
+          document.getElementById('config-x').value = pos.x;
+          document.getElementById('config-y').value = pos.y;
+          action.x = pos.x;
+          action.y = pos.y;
+          updateAction(index, action);
+        });
       });
       break;
 
@@ -1155,22 +1186,16 @@ function renderPixelDetectConfig(configBody, action, index) {
   });
 
   document.getElementById('btn-pick-color').addEventListener('click', async () => {
-    showToast('info', 'Pick Color', 'Move mouse to target color...');
-    setTimeout(async () => {
-      const pos = await window.workflowAPI.getMousePosition();
-      const color = await window.workflowAPI.getPixelColor(pos.x, pos.y);
-      if (color) {
-        action.color = color;
-        const hex = rgbToHex(color);
-        document.getElementById('config-pixel-color').value = hex;
-        document.getElementById('color-preview').style.background = hex;
-        document.getElementById('config-pixel-r').value = color.r;
-        document.getElementById('config-pixel-g').value = color.g;
-        document.getElementById('config-pixel-b').value = color.b;
-        updateAction(index, action);
-        showToast('success', 'Color Picked', `RGB(${color.r}, ${color.g}, ${color.b})`);
-      }
-    }, 2000);
+    await pickColorFromScreen((color) => {
+      action.color = color;
+      const hex = rgbToHex(color);
+      document.getElementById('config-pixel-color').value = hex;
+      document.getElementById('color-preview').style.background = hex;
+      document.getElementById('config-pixel-r').value = color.r;
+      document.getElementById('config-pixel-g').value = color.g;
+      document.getElementById('config-pixel-b').value = color.b;
+      updateAction(index, action);
+    });
   });
 
   document.getElementById('config-tolerance').addEventListener('input', (e) => {
@@ -1254,26 +1279,35 @@ function updateImagePreview(imageId) {
 }
 
 /**
- * Capture image template from screen
+ * Capture image template from screen with region selection
  */
 async function captureImageTemplate(callback) {
-  showToast('info', 'Capture Image', 'Minimizing window in 2 seconds...');
+  try {
+    // Minimize the main window first
+    await window.workflowAPI.minimizeWindow();
 
-  setTimeout(async () => {
-    try {
-      await window.workflowAPI.minimizeWindow();
-      await new Promise(r => setTimeout(r, 500));
+    // Small delay to ensure window is minimized
+    await new Promise(r => setTimeout(r, 300));
 
-      // For now, capture full screen and let user crop later
-      const imagePath = await window.workflowAPI.captureScreen();
-      const imageId = `template-${Date.now()}`;
+    // Open region selection overlay
+    const result = await window.workflowAPI.captureRegionTemplate();
 
-      showToast('success', 'Image Captured', 'Template saved');
-      if (callback) callback(imageId);
-    } catch (error) {
-      showToast('error', 'Capture Failed', error.message);
+    if (result.cancelled) {
+      showToast('info', 'Cancelled', 'Region capture cancelled');
+      return;
     }
-  }, 2000);
+
+    if (!result.success) {
+      showToast('error', 'Error', result.error || 'Failed to capture region');
+      return;
+    }
+
+    showToast('success', 'Image Captured', `Saved as ${result.imageId}`);
+    if (callback) callback(result.imageId);
+  } catch (error) {
+    console.error('Image capture failed:', error);
+    showToast('error', 'Capture Failed', error.message);
+  }
 }
 
 /**
@@ -1336,4 +1370,58 @@ function openNestedActionsEditor(parentAction, actionsKey, title, parentIndex) {
       openNestedActionsEditor(parentAction, actionsKey, title, parentIndex);
     });
   });
+}
+
+/**
+ * Pick a position from screen using overlay
+ */
+async function pickPositionFromScreen(callback) {
+  try {
+    const pos = await window.workflowAPI.pickScreenPosition();
+
+    if (!pos) {
+      showToast('info', 'Cancelled', 'Position pick cancelled');
+      return;
+    }
+
+    showToast('success', 'Position Captured', `X: ${pos.x}, Y: ${pos.y}`);
+
+    if (callback) {
+      callback(pos);
+    }
+  } catch (error) {
+    console.error('Position capture failed:', error);
+    showToast('error', 'Error', 'Failed to capture position');
+  }
+}
+
+/**
+ * Pick a color from screen using overlay
+ */
+async function pickColorFromScreen(callback) {
+  try {
+    const pos = await window.workflowAPI.pickScreenPosition();
+
+    if (!pos) {
+      showToast('info', 'Cancelled', 'Color pick cancelled');
+      return;
+    }
+
+    // Small delay to ensure overlay is fully closed before sampling
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    const color = await window.workflowAPI.getPixelColor(pos.x, pos.y);
+
+    if (color) {
+      showToast('success', 'Color Captured', `RGB(${color.r}, ${color.g}, ${color.b})`);
+      if (callback) {
+        callback(color);
+      }
+    } else {
+      showToast('error', 'Error', 'Failed to get pixel color');
+    }
+  } catch (error) {
+    console.error('Color capture failed:', error);
+    showToast('error', 'Error', 'Failed to capture color');
+  }
 }

@@ -100,8 +100,12 @@ const validReceiveChannels = [
 contextBridge.exposeInMainWorld('workflowAPI', {
   // ==================== WORKFLOWS ====================
 
-  getWorkflows: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.GET_WORKFLOWS),
+  getWorkflows: async () => {
+    console.log('[Preload] getWorkflows called');
+    const result = await ipcRenderer.invoke(IPC_CHANNELS.GET_WORKFLOWS);
+    console.log('[Preload] getWorkflows result:', result);
+    return result;
+  },
 
   getWorkflow: (id) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_WORKFLOW, id),
@@ -187,6 +191,16 @@ contextBridge.exposeInMainWorld('workflowAPI', {
   getScreenSize: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SCREEN_SIZE),
 
+  // Region capture with selection UI
+  captureRegionTemplate: (options) =>
+    ipcRenderer.invoke('capture-region-template', options),
+
+  selectScreenRegion: () =>
+    ipcRenderer.invoke('select-screen-region'),
+
+  pickScreenPosition: () =>
+    ipcRenderer.invoke('pick-screen-position'),
+
   // ==================== IMAGES ====================
 
   getImages: () =>
@@ -222,6 +236,14 @@ contextBridge.exposeInMainWorld('workflowAPI', {
 
   closeWindow: () =>
     ipcRenderer.invoke(IPC_CHANNELS.CLOSE_WINDOW),
+
+  // ==================== PERMISSIONS ====================
+
+  getPermissionStatus: () =>
+    ipcRenderer.invoke('permissions:get-status'),
+
+  requestAccessibilityPermission: () =>
+    ipcRenderer.invoke('permissions:request-accessibility'),
 
   // ==================== EVENT LISTENERS ====================
 

@@ -418,7 +418,7 @@ function renderExecutionHistory() {
   if (!historyList) return;
 
   if (executionHistory.length === 0) {
-    historyList.innerHTML = '<p style="padding: var(--space-4); text-align: center; color: var(--text-tertiary);">No execution history</p>';
+    historyList.innerHTML = '';
     return;
   }
 

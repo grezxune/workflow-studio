@@ -27,27 +27,44 @@ class MouseController {
   }
 
   async moveTo(x, y, options = {}) {
-    const currentPos = await mouse.getPosition();
-    const startX = currentPos.x;
-    const startY = currentPos.y;
+    console.log(`[MouseController] moveTo(${x}, ${y})`);
+    try {
+      const currentPos = await mouse.getPosition();
+      const startX = currentPos.x;
+      const startY = currentPos.y;
+      console.log(`[MouseController] Current position: (${startX}, ${startY})`);
 
-    const distance = Math.hypot(x - startX, y - startY);
+      const distance = Math.hypot(x - startX, y - startY);
+      console.log(`[MouseController] Distance: ${distance.toFixed(1)}px`);
 
-    if (this.overshootConfig.enabled && shouldOvershoot(distance, this.overshootConfig.frequency)) {
-      await this.moveWithOvershoot(startX, startY, x, y, options);
-    } else {
-      await this.moveDirectly(startX, startY, x, y, options);
+      if (this.overshootConfig.enabled && shouldOvershoot(distance, this.overshootConfig.frequency)) {
+        await this.moveWithOvershoot(startX, startY, x, y, options);
+      } else {
+        await this.moveDirectly(startX, startY, x, y, options);
+      }
+      console.log('[MouseController] Move complete');
+    } catch (error) {
+      console.error('[MouseController] moveTo error:', error);
+      throw error;
     }
   }
 
   async moveDirectly(startX, startY, endX, endY, options = {}) {
-    const path = this.windMouse.generatePath(startX, startY, endX, endY);
+    console.log(`[MouseController] moveDirectly from (${startX}, ${startY}) to (${endX}, ${endY})`);
+    try {
+      const path = this.windMouse.generatePath(startX, startY, endX, endY);
+      console.log(`[MouseController] Generated path with ${path.length} points`);
 
-    for (const point of path) {
-      await mouse.setPosition(new Point(point.x, point.y));
-      if (point.delay > 0) {
-        await sleep(point.delay);
+      for (const point of path) {
+        await mouse.setPosition(new Point(point.x, point.y));
+        if (point.delay > 0) {
+          await sleep(point.delay);
+        }
       }
+      console.log('[MouseController] moveDirectly complete');
+    } catch (error) {
+      console.error('[MouseController] moveDirectly error:', error);
+      throw error;
     }
   }
 

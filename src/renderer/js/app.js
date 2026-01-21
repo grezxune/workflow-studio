@@ -35,19 +35,40 @@ async function initApp() {
   // Setup navigation
   setupNavigation();
 
-  // Load initial data
-  await loadSettings();
-  await loadWorkflows();
-
-  // Setup event listeners from main process
-  setupIPCListeners();
-
-  // Initialize views
+  // Initialize views first (sets up DOM references)
   initWorkflowsView();
   initEditorView();
   initSettingsView();
 
+  // Setup event listeners from main process
+  setupIPCListeners();
+
+  // Load initial data (after views are ready)
+  await loadSettings();
+  await loadWorkflows();
+
+  // Check permissions on macOS
+  await checkPermissions();
+
   console.log('Workflow Studio initialized');
+}
+
+/**
+ * Check system permissions on startup
+ */
+async function checkPermissions() {
+  try {
+    const status = await window.workflowAPI.getPermissionStatus();
+    console.log('[App] Permission status:', status);
+
+    if (!status.accessibility) {
+      showToast('warning', 'Permission Required',
+        'Accessibility permission is needed to control mouse/keyboard. Click Settings > Request Permissions.',
+        10000);
+    }
+  } catch (error) {
+    console.error('[App] Failed to check permissions:', error);
+  }
 }
 
 /**
@@ -117,12 +138,15 @@ async function loadSettings() {
  */
 async function loadWorkflows() {
   try {
+    console.log('[App] Loading workflows...');
     state.workflows = await window.workflowAPI.getWorkflows();
+    console.log('[App] Loaded workflows:', state.workflows);
+    console.log('[App] Workflow count:', state.workflows?.length || 0);
     renderWorkflowList();
     renderRecentWorkflows();
   } catch (error) {
-    console.error('Failed to load workflows:', error);
-    showToast('error', 'Error', 'Failed to load workflows');
+    console.error('[App] Failed to load workflows:', error);
+    showToast('error', 'Error', `Failed to load workflows: ${error.message}`);
   }
 }
 

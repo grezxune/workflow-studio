@@ -13,30 +13,45 @@ import { DEFAULT_SETTINGS } from '../../shared/constants.js';
 
 class StorageService {
   constructor() {
-    this.store = new Store({
-      name: 'config',
-      encryptionKey: 'workflow-studio-v1',
-      defaults: {
-        settings: DEFAULT_SETTINGS,
-        recentWorkflows: []
-      }
-    });
+    console.log('[Storage] Initializing StorageService...');
+    try {
+      this.store = new Store({
+        name: 'config',
+        encryptionKey: 'workflow-studio-v1',
+        defaults: {
+          settings: DEFAULT_SETTINGS,
+          recentWorkflows: []
+        }
+      });
+      console.log('[Storage] Store created successfully');
+    } catch (error) {
+      console.error('[Storage] Failed to create store:', error);
+      throw error;
+    }
 
     this.workflowsDir = null;
     this.imagesDir = null;
     this.detectionsDir = null;
 
-    this.initializeDirectories();
+    try {
+      this.initializeDirectories();
+    } catch (error) {
+      console.error('[Storage] Failed to initialize directories:', error);
+      throw error;
+    }
   }
 
   initializeDirectories() {
     const configuredDir = this.store.get('settings.workflowsDir');
+    console.log('[Storage] Configured workflows dir from store:', configuredDir);
 
     if (configuredDir && fs.existsSync(configuredDir)) {
       this.workflowsDir = configuredDir;
+      console.log('[Storage] Using configured dir:', this.workflowsDir);
     } else {
       const documentsDir = app.getPath('documents');
       this.workflowsDir = path.join(documentsDir, 'WorkflowStudio');
+      console.log('[Storage] Using default dir:', this.workflowsDir);
     }
 
     this.imagesDir = path.join(this.workflowsDir, 'images');
@@ -45,11 +60,13 @@ class StorageService {
 
     [this.workflowsDir, workflowsSubdir, this.imagesDir, this.detectionsDir].forEach(dir => {
       if (!fs.existsSync(dir)) {
+        console.log('[Storage] Creating directory:', dir);
         fs.mkdirSync(dir, { recursive: true });
       }
     });
 
     this.store.set('settings.workflowsDir', this.workflowsDir);
+    console.log('[Storage] Final workflows path:', this.getWorkflowsPath());
   }
 
   setWorkflowsDir(newDir) {
@@ -76,7 +93,16 @@ class StorageService {
 
   getAllWorkflows() {
     const workflowsPath = this.getWorkflowsPath();
+    console.log('[Storage] Loading workflows from:', workflowsPath);
+
+    if (!fs.existsSync(workflowsPath)) {
+      console.log('[Storage] Workflows directory does not exist, creating...');
+      fs.mkdirSync(workflowsPath, { recursive: true });
+      return [];
+    }
+
     const files = fs.readdirSync(workflowsPath).filter(f => f.endsWith('.json'));
+    console.log('[Storage] Found workflow files:', files);
 
     const workflows = [];
     for (const file of files) {
@@ -85,10 +111,11 @@ class StorageService {
         const workflow = JSON.parse(content);
         workflows.push(workflow);
       } catch (err) {
-        console.error(`Failed to load workflow ${file}:`, err);
+        console.error(`[Storage] Failed to load workflow ${file}:`, err);
       }
     }
 
+    console.log('[Storage] Loaded', workflows.length, 'workflows');
     workflows.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
     return workflows;
   }

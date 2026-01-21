@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Select Region</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      cursor: crosshair;
+      user-select: none;
+      background: transparent;
+    }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.3);
+    }
+
+    .instructions {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      z-index: 1000;
+      pointer-events: none;
+    }
+
+    .instructions kbd {
+      background: rgba(255, 255, 255, 0.2);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: inherit;
+    }
+
+    .selection {
+      position: fixed;
+      border: 2px solid #06b6d4;
+      background: rgba(6, 182, 212, 0.1);
+      pointer-events: none;
+      display: none;
+    }
+
+    .selection.active {
+      display: block;
+    }
+
+    .selection-size {
+      position: absolute;
+      bottom: -24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #06b6d4;
+      color: white;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .corner {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      background: #06b6d4;
+      border-radius: 2px;
+    }
+
+    .corner.tl { top: -4px; left: -4px; }
+    .corner.tr { top: -4px; right: -4px; }
+    .corner.bl { bottom: -4px; left: -4px; }
+    .corner.br { bottom: -4px; right: -4px; }
+  </style>
+</head>
+<body>
+  <div class="overlay"></div>
+  <div class="instructions">
+    Click and drag to select region. Press <kbd>Esc</kbd> to cancel.
+  </div>
+  <div class="selection" id="selection">
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+    <div class="selection-size" id="selection-size">0 x 0</div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    const selection = document.getElementById('selection');
+    const sizeLabel = document.getElementById('selection-size');
+
+    let isSelecting = false;
+    let startX = 0;
+    let startY = 0;
+
+    document.addEventListener('mousedown', (e) => {
+      isSelecting = true;
+      startX = e.clientX;
+      startY = e.clientY;
+
+      selection.style.left = startX + 'px';
+      selection.style.top = startY + 'px';
+      selection.style.width = '0px';
+      selection.style.height = '0px';
+      selection.classList.add('active');
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isSelecting) return;
+
+      const currentX = e.clientX;
+      const currentY = e.clientY;
+
+      const left = Math.min(startX, currentX);
+      const top = Math.min(startY, currentY);
+      const width = Math.abs(currentX - startX);
+      const height = Math.abs(currentY - startY);
+
+      selection.style.left = left + 'px';
+      selection.style.top = top + 'px';
+      selection.style.width = width + 'px';
+      selection.style.height = height + 'px';
+
+      sizeLabel.textContent = `${width} x ${height}`;
+    });
+
+    document.addEventListener('mouseup', (e) => {
+      if (!isSelecting) return;
+      isSelecting = false;
+
+      const currentX = e.clientX;
+      const currentY = e.clientY;
+
+      const left = Math.min(startX, currentX);
+      const top = Math.min(startY, currentY);
+      const width = Math.abs(currentX - startX);
+      const height = Math.abs(currentY - startY);
+
+      // Minimum selection size
+      if (width < 10 || height < 10) {
+        selection.classList.remove('active');
+        return;
+      }
+
+      // Send region to main process
+      ipcRenderer.send('region-selected', {
+        x: Math.round(left),
+        y: Math.round(top),
+        width: Math.round(width),
+        height: Math.round(height)
+      });
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        ipcRenderer.send('region-cancelled');
+      }
+    });
+  </script>
+</body>
+</html>

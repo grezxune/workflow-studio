@@ -8,9 +8,15 @@ import { fileURLToPath } from 'url';
 import { initializeIPC, cleanupIPC } from './ipc/index.js';
 import { getSafetyService } from './services/safety.js';
 import { getStorageService } from './services/storage.js';
+import { initRegionSelectorIPC } from './services/region-selector.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Set app name early (before app ready) for macOS menu bar
+if (process.platform === 'darwin') {
+  app.setName('Workflow Studio');
+}
 
 let mainWindow = null;
 let tray = null;
@@ -67,11 +73,27 @@ function getIconPath() {
   return path.join(__dirname, '../../assets', iconName);
 }
 
+function getTrayIconPath() {
+  if (process.platform === 'darwin') {
+    // macOS uses template images, return path without extension
+    return path.join(__dirname, '../../assets', 'tray-iconTemplate');
+  }
+  return path.join(__dirname, '../../assets', 'tray-icon.png');
+}
+
 function createTray() {
-  const iconPath = getIconPath();
   try {
-    const icon = nativeImage.createFromPath(iconPath);
-    tray = new Tray(icon.resize({ width: 16, height: 16 }));
+    let icon;
+    if (process.platform === 'darwin') {
+      // For macOS, use the tray icon with @2x for retina
+      const iconPath = path.join(__dirname, '../../assets', 'tray-icon.png');
+      icon = nativeImage.createFromPath(iconPath);
+    } else {
+      const iconPath = getIconPath();
+      icon = nativeImage.createFromPath(iconPath);
+      icon = icon.resize({ width: 16, height: 16 });
+    }
+    tray = new Tray(icon);
 
     const contextMenu = Menu.buildFromTemplate([
       {
@@ -137,9 +159,9 @@ function createMenu() {
 
   const template = [
     ...(isMac ? [{
-      label: app.name,
+      label: 'Workflow Studio',
       submenu: [
-        { role: 'about' },
+        { role: 'about', label: 'About Workflow Studio' },
         { type: 'separator' },
         {
           label: 'Preferences...',
@@ -297,9 +319,16 @@ function createMenu() {
 }
 
 app.whenReady().then(() => {
+  // Set dock icon on macOS
+  if (process.platform === 'darwin') {
+    const dockIcon = nativeImage.createFromPath(getIconPath());
+    app.dock.setIcon(dockIcon);
+  }
+
   createMenu();
   createWindow();
   createTray();
+  initRegionSelectorIPC();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

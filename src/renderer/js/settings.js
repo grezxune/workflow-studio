@@ -237,7 +237,7 @@ async function loadImageGallery() {
     const images = await window.workflowAPI.getImages();
 
     if (!images || images.length === 0) {
-      gallery.innerHTML = '<p style="color: var(--text-tertiary); font-size: var(--text-sm); grid-column: 1 / -1;">No image templates saved</p>';
+      gallery.innerHTML = '';
       return;
     }
 
@@ -280,23 +280,33 @@ async function loadImageGallery() {
 }
 
 /**
- * Capture a new image template
+ * Capture a new image template with region selection
  */
 async function captureNewTemplate() {
-  showToast('info', 'Capture', 'Minimizing window in 2 seconds...');
+  try {
+    // Minimize the main window first
+    await window.workflowAPI.minimizeWindow();
 
-  setTimeout(async () => {
-    try {
-      await window.workflowAPI.minimizeWindow();
-      await new Promise(r => setTimeout(r, 500));
+    // Small delay to ensure window is minimized
+    await new Promise(r => setTimeout(r, 300));
 
-      const imagePath = await window.workflowAPI.captureScreen();
+    // Open region selection overlay
+    const result = await window.workflowAPI.captureRegionTemplate();
 
-      showToast('success', 'Captured', 'Image template saved');
-      loadImageGallery();
-    } catch (error) {
-      console.error('Capture failed:', error);
-      showToast('error', 'Error', 'Failed to capture image');
+    if (result.cancelled) {
+      showToast('info', 'Cancelled', 'Region capture cancelled');
+      return;
     }
-  }, 2000);
+
+    if (!result.success) {
+      showToast('error', 'Error', result.error || 'Failed to capture region');
+      return;
+    }
+
+    showToast('success', 'Captured', `Image template saved as ${result.imageId}`);
+    loadImageGallery();
+  } catch (error) {
+    console.error('Capture failed:', error);
+    showToast('error', 'Error', 'Failed to capture image');
+  }
 }
