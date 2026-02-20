@@ -46,9 +46,16 @@ export function pickPosition() {
 
 /**
  * Calculate the combined bounds of all displays
+ * Uses physical pixel coordinates to properly span all monitors
  */
 function getAllDisplaysBounds() {
   const displays = screen.getAllDisplays();
+
+  console.log('[RegionSelector] Calculating bounds for displays:', displays.map(d => ({
+    id: d.id,
+    bounds: d.bounds,
+    scaleFactor: d.scaleFactor
+  })));
 
   let minX = Infinity, minY = Infinity;
   let maxX = -Infinity, maxY = -Infinity;
@@ -61,12 +68,16 @@ function getAllDisplaysBounds() {
     maxY = Math.max(maxY, y + height);
   }
 
-  return {
+  const bounds = {
     x: minX,
     y: minY,
     width: maxX - minX,
     height: maxY - minY
   };
+
+  console.log('[RegionSelector] Combined bounds:', bounds);
+
+  return bounds;
 }
 
 /**
@@ -88,6 +99,7 @@ function createSelectorWindow() {
     movable: false,
     fullscreen: false,
     hasShadow: false,
+    enableLargerThanScreen: true,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
@@ -96,6 +108,9 @@ function createSelectorWindow() {
 
   // Store bounds offset for coordinate translation
   selectorWindow.displayOffset = { x: bounds.x, y: bounds.y };
+
+  // Explicitly set bounds after creation to ensure proper multi-monitor coverage
+  selectorWindow.setBounds(bounds);
 
   selectorWindow.loadFile(path.join(__dirname, '../../renderer/region-select.html'));
 
@@ -133,6 +148,7 @@ function createPositionPickerWindow() {
     movable: false,
     fullscreen: false,
     hasShadow: false,
+    enableLargerThanScreen: true,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
@@ -140,6 +156,9 @@ function createPositionPickerWindow() {
   });
 
   positionPickerWindow.displayOffset = { x: bounds.x, y: bounds.y };
+
+  // Explicitly set bounds after creation to ensure proper multi-monitor coverage
+  positionPickerWindow.setBounds(bounds);
 
   positionPickerWindow.loadFile(path.join(__dirname, '../../renderer/position-picker.html'));
 

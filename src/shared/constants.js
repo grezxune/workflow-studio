@@ -138,7 +138,15 @@ export const IPC_CHANNELS = {
   GET_MOUSE_POSITION: 'util:get-mouse-pos',
   MINIMIZE_WINDOW: 'window:minimize',
   MAXIMIZE_WINDOW: 'window:maximize',
-  CLOSE_WINDOW: 'window:close'
+  CLOSE_WINDOW: 'window:close',
+
+  // Templates
+  GET_TEMPLATES: 'template:get-all',
+  GET_TEMPLATE: 'template:get',
+  CREATE_TEMPLATE: 'template:create',
+  UPDATE_TEMPLATE: 'template:update',
+  DELETE_TEMPLATE: 'template:delete',
+  DUPLICATE_TEMPLATE: 'template:duplicate'
 };
 
 export const DEFAULT_SETTINGS = {
@@ -147,6 +155,7 @@ export const DEFAULT_SETTINGS = {
   theme: 'dark',
   defaultLoopDelay: { min: 500, max: 1000 },
   typingSpeed: { min: 50, max: 150 },
+  mouseMoveDuration: 250,
   clickJitter: {
     enabled: true,
     radius: 3,

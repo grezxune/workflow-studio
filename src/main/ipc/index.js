@@ -13,6 +13,9 @@ import { getSafetyService } from '../services/safety.js';
 import { getDetectionService } from '../services/detection.js';
 import { getMouseController } from '../services/mouse-controller.js';
 import { getPermissionStatus, requestAccessibilityPermission } from '../lib/permissions.js';
+import quickRecord from '../services/quick-record.js';
+import workflowPreview from '../services/workflow-preview.js';
+import floatingBar from '../services/floating-bar.js';
 
 let mainWindow = null;
 
@@ -26,6 +29,16 @@ export function initializeIPC(window) {
   const safety = getSafetyService();
   const detection = getDetectionService();
 
+  // Load stored settings into live service instances
+  const storedSettings = storage.getSettings();
+  try {
+    const mouse = getMouseController();
+    if (mouse) mouse.updateSettings(storedSettings);
+  } catch (e) {}
+  try {
+    if (detection) detection.updateSettings(storedSettings);
+  } catch (e) {}
+
   safety.onPanic(async (source) => {
     await executor.emergencyStop();
     sendToRenderer(IPC_CHANNELS.EXECUTION_STOPPED, { source });
@@ -38,6 +51,11 @@ export function initializeIPC(window) {
   registerDetectionHandlers(detection);
   registerSafetyHandlers(safety);
   registerUtilityHandlers();
+  registerTemplateHandlers(storage);
+  registerQuickRecordHandlers();
+  registerPreviewHandlers();
+  registerFloatingBarHandlers();
+  floatingBar.initFloatingBarIPC();
 }
 
 function sendToRenderer(channel, data) {
@@ -53,14 +71,17 @@ function setupExecutorEvents(executor) {
 
   executor.on('workflow:complete', (data) => {
     sendToRenderer(IPC_CHANNELS.EXECUTION_COMPLETED, data);
+    floatingBar.closeFloatingBar();
   });
 
   executor.on('workflow:stopped', (data) => {
     sendToRenderer(IPC_CHANNELS.EXECUTION_STOPPED, data);
+    floatingBar.closeFloatingBar();
   });
 
   executor.on('workflow:error', (data) => {
     sendToRenderer(IPC_CHANNELS.EXECUTION_ERROR, { error: data.error.message });
+    floatingBar.closeFloatingBar();
   });
 
   executor.on('workflow:paused', () => {
@@ -73,6 +94,16 @@ function setupExecutorEvents(executor) {
 
   executor.on('action:start', (data) => {
     sendToRenderer(IPC_CHANNELS.ACTION_STARTED, data);
+    // Forward to floating bar
+    const actionType = data.action?.type || 'unknown';
+    const actionNames = { mouse_move: 'Mouse Move', click: 'Click', keyboard: 'Keyboard', wait: 'Wait', loop: 'Loop', conditional: 'Conditional', image_detect: 'Image Detect', pixel_detect: 'Pixel Detect' };
+    const name = actionNames[actionType] || actionType;
+    floatingBar.sendToFloatingBar('floating-bar:update-action', {
+      text: `${name} (${data.index + 1}/${data.total})`
+    });
+    if (actionType !== 'wait') {
+      floatingBar.sendToFloatingBar('floating-bar:wait-hide');
+    }
   });
 
   executor.on('action:complete', (data) => {
@@ -81,6 +112,16 @@ function setupExecutorEvents(executor) {
 
   executor.on('action:error', (data) => {
     sendToRenderer(IPC_CHANNELS.ACTION_ERROR, { ...data, error: data.error.message });
+  });
+
+  executor.on('wait:start', (data) => {
+    sendToRenderer('wait:start', data);
+    floatingBar.sendToFloatingBar('floating-bar:wait-start', { duration: data.duration });
+  });
+
+  executor.on('wait:tick', (data) => {
+    sendToRenderer('wait:tick', data);
+    floatingBar.sendToFloatingBar('floating-bar:wait-tick', data);
   });
 
   executor.on('loop:start', (data) => {
@@ -209,7 +250,19 @@ function registerSettingsHandlers(storage) {
   });
 
   ipcMain.handle(IPC_CHANNELS.UPDATE_SETTINGS, async (event, updates) => {
-    return storage.updateSettings(updates);
+    const result = storage.updateSettings(updates);
+    
+    // Propagate to live service instances
+    try {
+      const mouse = getMouseController();
+      if (mouse) mouse.updateSettings(updates);
+    } catch (e) {}
+    try {
+      const detection = getDetectionService();
+      if (detection) detection.updateSettings(updates);
+    } catch (e) {}
+    
+    return result;
   });
 
   ipcMain.handle(IPC_CHANNELS.GET_SETTING, async (event, key) => {
@@ -334,11 +387,123 @@ function registerUtilityHandlers() {
   });
 }
 
+function registerTemplateHandlers(storage) {
+  ipcMain.handle(IPC_CHANNELS.GET_TEMPLATES, async () => {
+    try {
+      console.log('[IPC] GET_TEMPLATES called');
+      const templates = storage.getAllTemplates();
+      console.log('[IPC] Returning', templates.length, 'templates');
+      return templates;
+    } catch (error) {
+      console.error('[IPC] GET_TEMPLATES error:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GET_TEMPLATE, async (event, id) => {
+    return storage.getTemplate(id);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CREATE_TEMPLATE, async (event, data) => {
+    return storage.createTemplate(data);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.UPDATE_TEMPLATE, async (event, { id, updates }) => {
+    return storage.updateTemplate(id, updates);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.DELETE_TEMPLATE, async (event, id) => {
+    return storage.deleteTemplate(id);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.DUPLICATE_TEMPLATE, async (event, id) => {
+    return storage.duplicateTemplate(id);
+  });
+}
+
+/**
+ * Register Quick Record handlers
+ */
+function registerQuickRecordHandlers() {
+  quickRecord.initIPC();
+
+  ipcMain.handle('quick-record:start', async (event, options) => {
+    return quickRecord.start(options, mainWindow);
+  });
+
+  ipcMain.handle('quick-record:stop', async () => {
+    quickRecord.stop();
+    return { success: true };
+  });
+
+  ipcMain.handle('quick-record:update-mode', async (event, mode) => {
+    quickRecord.updateMode(mode);
+    return { success: true };
+  });
+}
+
+/**
+ * Register Workflow Preview handlers
+ */
+function registerPreviewHandlers() {
+  workflowPreview.initIPC();
+
+  ipcMain.handle('workflow-preview:show', async (event, workflow) => {
+    return workflowPreview.show(workflow, mainWindow);
+  });
+
+  ipcMain.handle('workflow-preview:close', async () => {
+    workflowPreview.close();
+    return { success: true };
+  });
+
+  ipcMain.handle('workflow-preview:is-open', async () => {
+    return workflowPreview.isOpen();
+  });
+}
+
+/**
+ * Register Floating Bar handlers
+ */
+function registerFloatingBarHandlers() {
+  ipcMain.handle('floating-bar:show', async () => {
+    floatingBar.showFloatingBar(mainWindow);
+    return { success: true };
+  });
+
+  ipcMain.handle('floating-bar:hide', async () => {
+    floatingBar.hideFloatingBar();
+    return { success: true };
+  });
+
+  ipcMain.handle('floating-bar:close', async () => {
+    floatingBar.closeFloatingBar();
+    return { success: true };
+  });
+
+  ipcMain.handle('floating-bar:update-pause', async (event, paused) => {
+    floatingBar.sendToFloatingBar('floating-bar:update-pause', paused);
+    return { success: true };
+  });
+
+  ipcMain.handle('floating-bar:update-stop-timer', async (event, data) => {
+    floatingBar.sendToFloatingBar('floating-bar:stop-timer', data);
+    return { success: true };
+  });
+
+  ipcMain.handle('floating-bar:sync-wait', async (event, data) => {
+    floatingBar.sendToFloatingBar('floating-bar:wait-start', { duration: data.duration });
+    floatingBar.sendToFloatingBar('floating-bar:wait-tick', data);
+    return { success: true };
+  });
+}
+
 export function cleanupIPC() {
   Object.values(IPC_CHANNELS).forEach(channel => {
     ipcMain.removeHandler(channel);
   });
 
+  floatingBar.closeFloatingBar();
   getSafetyService().destroy();
 }
 

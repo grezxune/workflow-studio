@@ -32,6 +32,7 @@ class StorageService {
     this.workflowsDir = null;
     this.imagesDir = null;
     this.detectionsDir = null;
+    this.templatesDir = null;
 
     try {
       this.initializeDirectories();
@@ -56,9 +57,10 @@ class StorageService {
 
     this.imagesDir = path.join(this.workflowsDir, 'images');
     this.detectionsDir = path.join(this.workflowsDir, 'detections');
+    this.templatesDir = path.join(this.workflowsDir, 'templates');
     const workflowsSubdir = path.join(this.workflowsDir, 'workflows');
 
-    [this.workflowsDir, workflowsSubdir, this.imagesDir, this.detectionsDir].forEach(dir => {
+    [this.workflowsDir, workflowsSubdir, this.imagesDir, this.detectionsDir, this.templatesDir].forEach(dir => {
       if (!fs.existsSync(dir)) {
         console.log('[Storage] Creating directory:', dir);
         fs.mkdirSync(dir, { recursive: true });
@@ -304,6 +306,124 @@ class StorageService {
     } catch (err) {
       throw new Error('Invalid workflow JSON');
     }
+  }
+
+  // ==================== TEMPLATES ====================
+
+  getTemplatesPath() {
+    return this.templatesDir;
+  }
+
+  getAllTemplates() {
+    const templatesPath = this.getTemplatesPath();
+    console.log('[Storage] Loading templates from:', templatesPath);
+
+    if (!fs.existsSync(templatesPath)) {
+      console.log('[Storage] Templates directory does not exist, creating...');
+      fs.mkdirSync(templatesPath, { recursive: true });
+      return [];
+    }
+
+    const files = fs.readdirSync(templatesPath).filter(f => f.endsWith('.json'));
+    console.log('[Storage] Found template files:', files);
+
+    const templates = [];
+    for (const file of files) {
+      try {
+        const content = fs.readFileSync(path.join(templatesPath, file), 'utf-8');
+        const template = JSON.parse(content);
+        templates.push(template);
+      } catch (err) {
+        console.error(`[Storage] Failed to load template ${file}:`, err);
+      }
+    }
+
+    console.log('[Storage] Loaded', templates.length, 'templates');
+    templates.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    return templates;
+  }
+
+  getTemplate(id) {
+    const filePath = path.join(this.getTemplatesPath(), `${id}.json`);
+
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      return JSON.parse(content);
+    } catch (err) {
+      console.error(`Failed to load template ${id}:`, err);
+      return null;
+    }
+  }
+
+  createTemplate(data = {}) {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+
+    const template = {
+      id,
+      name: data.name || 'Untitled Template',
+      description: data.description || '',
+      createdAt: now,
+      updatedAt: now,
+      actions: data.actions || []
+    };
+
+    this.saveTemplate(template);
+    return template;
+  }
+
+  updateTemplate(id, updates) {
+    const template = this.getTemplate(id);
+
+    if (!template) {
+      throw new Error(`Template ${id} not found`);
+    }
+
+    const updated = {
+      ...template,
+      ...updates,
+      id,
+      updatedAt: new Date().toISOString()
+    };
+
+    this.saveTemplate(updated);
+    return updated;
+  }
+
+  deleteTemplate(id) {
+    const filePath = path.join(this.getTemplatesPath(), `${id}.json`);
+
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      return true;
+    }
+
+    return false;
+  }
+
+  saveTemplate(template) {
+    const filePath = path.join(this.getTemplatesPath(), `${template.id}.json`);
+    fs.writeFileSync(filePath, JSON.stringify(template, null, 2), 'utf-8');
+  }
+
+  duplicateTemplate(id) {
+    const original = this.getTemplate(id);
+
+    if (!original) {
+      throw new Error(`Template ${id} not found`);
+    }
+
+    const duplicate = this.createTemplate({
+      ...original,
+      name: `${original.name} (Copy)`,
+      id: undefined
+    });
+
+    return duplicate;
   }
 }
 

@@ -52,7 +52,10 @@ const ACTION_TYPES = {
 let editorState = {
   selectedActionIndex: -1,
   draggedAction: null,
-  isDirty: false
+  isDirty: false,
+  templates: [],
+  selectedActionIndices: [], // For multi-select when saving templates
+  compactView: false
 };
 
 // DOM references
@@ -63,6 +66,8 @@ let loopCountInput = null;
 let loopDelayMinInput = null;
 let loopDelayMaxInput = null;
 let configPanel = null;
+let templateList = null;
+let toggleViewBtn = null;
 
 /**
  * Initialize editor view
@@ -75,12 +80,123 @@ function initEditorView() {
   loopDelayMinInput = document.getElementById('loop-delay-min');
   loopDelayMaxInput = document.getElementById('loop-delay-max');
   configPanel = document.getElementById('config-panel');
+  templateList = document.getElementById('template-list');
+  toggleViewBtn = document.getElementById('btn-toggle-view');
 
   // Populate action palette
   populateActionPalette();
 
   // Setup event listeners
   setupEditorEvents();
+
+  // Setup view toggle
+  setupViewToggle();
+
+  // Setup preview overlay
+  setupPreviewOverlay();
+
+  // Load templates
+  loadTemplates();
+}
+
+/**
+ * Setup view toggle button
+ */
+function setupViewToggle() {
+  if (!toggleViewBtn) return;
+  
+  toggleViewBtn.addEventListener('click', toggleCompactView);
+  
+  // Keyboard shortcut V for view toggle
+  document.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() === 'v' && !isInputFocused()) {
+      e.preventDefault();
+      toggleCompactView();
+    }
+  });
+}
+
+/**
+ * Check if an input element is focused
+ */
+function isInputFocused() {
+  const active = document.activeElement;
+  return active && (
+    active.tagName === 'INPUT' || 
+    active.tagName === 'TEXTAREA' || 
+    active.tagName === 'SELECT' ||
+    active.isContentEditable
+  );
+}
+
+/**
+ * Toggle between compact and normal view
+ */
+function toggleCompactView() {
+  editorState.compactView = !editorState.compactView;
+  
+  if (editorState.compactView) {
+    actionSequence.classList.add('compact-view');
+  } else {
+    actionSequence.classList.remove('compact-view');
+  }
+  
+  // Update button icons
+  const listIcon = document.getElementById('icon-list-view');
+  const gridIcon = document.getElementById('icon-grid-view');
+  if (listIcon && gridIcon) {
+    listIcon.style.display = editorState.compactView ? 'none' : 'block';
+    gridIcon.style.display = editorState.compactView ? 'block' : 'none';
+  }
+}
+
+/**
+ * Setup preview overlay toggle
+ */
+function setupPreviewOverlay() {
+  const previewBtn = document.getElementById('btn-preview-overlay');
+  if (!previewBtn) return;
+
+  let previewActive = false;
+
+  async function togglePreview() {
+    if (!state.currentWorkflow) {
+      showToast('warning', 'No Workflow', 'Open a workflow first');
+      return;
+    }
+
+    if (previewActive) {
+      await window.workflowAPI.closeWorkflowPreview();
+      previewActive = false;
+      previewBtn.classList.remove('active');
+      return;
+    }
+
+    const result = await window.workflowAPI.showWorkflowPreview(state.currentWorkflow);
+    if (result && result.success) {
+      previewActive = true;
+      previewBtn.classList.add('active');
+      showToast('info', 'Preview Overlay', `Showing ${result.targetCount} targets. Press ESC on overlay to close.`);
+    } else if (result && result.error) {
+      showToast('warning', 'No Targets', result.error);
+    }
+  }
+
+  previewBtn.addEventListener('click', togglePreview);
+
+  // Listen for overlay closed externally (ESC on overlay)
+  window.workflowAPI.onWorkflowPreviewClosed(() => {
+    previewActive = false;
+    previewBtn.classList.remove('active');
+  });
+
+  // Keyboard shortcut P
+  document.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() === 'p' && !isInputFocused()) {
+      e.preventDefault();
+      togglePreview();
+    }
+  });
 }
 
 /**
@@ -169,6 +285,9 @@ function setupEditorEvents() {
 
   // Config panel close
   document.getElementById('btn-close-config').addEventListener('click', closeConfigPanel);
+
+  // Save as template button
+  document.getElementById('btn-save-as-template').addEventListener('click', openSaveAsTemplateModal);
 }
 
 /**
@@ -233,7 +352,10 @@ function createSequenceItem(action, index) {
   }
 
   const summary = getActionSummary(action);
+  const actionName = action.name ? `<div class="sequence-item-name">${escapeHtml(action.name)}</div>` : '';
 
+  const compactLabel = getCompactLabel(action);
+  
   item.innerHTML = `
     <span class="sequence-item-number">${index + 1}</span>
     <div class="sequence-item-icon" data-type="${action.type}">
@@ -241,7 +363,9 @@ function createSequenceItem(action, index) {
         ${meta.icon}
       </svg>
     </div>
+    <span class="sequence-item-compact-label" title="${escapeHtml(summary)}">${escapeHtml(compactLabel)}</span>
     <div class="sequence-item-content">
+      ${actionName}
       <div class="sequence-item-title">${meta.name}</div>
       <div class="sequence-item-summary">${summary}</div>
     </div>
@@ -269,7 +393,7 @@ function createSequenceItem(action, index) {
 
   // Click to select
   item.addEventListener('click', (e) => {
-    if (e.target.closest('[data-action]')) return;
+    if (e.target.closest('[data-action]') || e.target.closest('.inline-children') || e.target.closest('.inline-toggle')) return;
     selectAction(index);
   });
 
@@ -284,7 +408,12 @@ function createSequenceItem(action, index) {
 
   // Drag for reordering
   item.addEventListener('dragstart', (e) => {
+    if (e.target.closest('.inline-children')) { e.preventDefault(); return; }
     editorState.draggedAction = { index, isNew: false };
+    e.dataTransfer.setData('text/plain', JSON.stringify({
+      type: 'main-action',
+      index: index
+    }));
     e.dataTransfer.effectAllowed = 'move';
     setTimeout(() => item.classList.add('dragging'), 0);
   });
@@ -293,6 +422,221 @@ function createSequenceItem(action, index) {
     item.classList.remove('dragging');
     editorState.draggedAction = null;
   });
+
+  // Inline nested children for loop/conditional
+  if (action.type === 'loop' || action.type === 'conditional') {
+    const childrenContainer = document.createElement('div');
+    childrenContainer.className = 'inline-children';
+    
+    const branches = [];
+    if (action.type === 'loop') {
+      branches.push({ key: 'actions', label: 'Loop Actions', actions: action.actions || [] });
+    } else {
+      branches.push({ key: 'thenActions', label: 'Then', actions: action.thenActions || [] });
+      branches.push({ key: 'elseActions', label: 'Else', actions: action.elseActions || [] });
+    }
+
+    branches.forEach(branch => {
+      const branchEl = document.createElement('div');
+      branchEl.className = 'inline-branch';
+      
+      const header = document.createElement('div');
+      header.className = 'inline-branch-header';
+      header.innerHTML = `
+        <span class="inline-branch-label">${branch.label}</span>
+        <span class="inline-branch-count">${branch.actions.length} action${branch.actions.length !== 1 ? 's' : ''}</span>
+      `;
+      branchEl.appendChild(header);
+
+      const listEl = document.createElement('div');
+      listEl.className = 'inline-branch-list';
+      listEl.dataset.parentIndex = index;
+      listEl.dataset.actionsKey = branch.key;
+
+      if (branch.actions.length === 0) {
+        listEl.innerHTML = '<div class="inline-empty">Drop actions here</div>';
+      } else {
+        let inlineDragIndex = null;
+        let inlineDragAllowed = false;
+
+        branch.actions.forEach((childAction, ci) => {
+          const childEl = document.createElement('div');
+          childEl.className = 'inline-child-item';
+          childEl.draggable = true;
+          childEl.dataset.childIndex = ci;
+          childEl.innerHTML = `
+            <span class="inline-child-handle" title="Drag to reorder">⋮⋮</span>
+            <span class="inline-child-num">${ci + 1}</span>
+            <span class="inline-child-name">${ACTION_TYPES[childAction.type]?.name || childAction.type}</span>
+            <span class="inline-child-summary">${getActionSummary(childAction)}</span>
+            <div class="inline-child-buttons">
+              <button class="btn btn-icon btn-sm inline-child-edit" title="Edit">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+              </button>
+              <button class="btn btn-icon btn-sm inline-child-moveout" title="Move out to main sequence">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
+              <button class="btn btn-icon btn-sm btn-danger inline-child-delete" title="Delete">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+          `;
+
+          // Drag handle
+          const handle = childEl.querySelector('.inline-child-handle');
+          handle.addEventListener('mousedown', (e) => { inlineDragAllowed = true; });
+
+          childEl.addEventListener('dragstart', (e) => {
+            if (!inlineDragAllowed) { e.preventDefault(); return; }
+            e.stopPropagation();
+            inlineDragAllowed = false;
+            inlineDragIndex = ci;
+            childEl.classList.add('dragging');
+            e.dataTransfer.setData('text/plain', JSON.stringify({
+              type: 'inline-child',
+              childIndex: ci,
+              branchKey: branch.key,
+              parentIndex: index
+            }));
+            e.dataTransfer.effectAllowed = 'move';
+          });
+
+          childEl.addEventListener('dragend', (e) => {
+            e.stopPropagation();
+            childEl.classList.remove('dragging');
+            inlineDragIndex = null;
+            inlineDragAllowed = false;
+            listEl.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+          });
+
+          childEl.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (inlineDragIndex !== null && ci !== inlineDragIndex) {
+              childEl.classList.add('drag-over');
+            }
+          });
+
+          childEl.addEventListener('dragleave', (e) => {
+            childEl.classList.remove('drag-over');
+          });
+
+          childEl.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            childEl.classList.remove('drag-over');
+
+            try {
+              const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+              if (data.type === 'inline-child' && data.branchKey === branch.key && data.parentIndex === index) {
+                // Reorder within same branch
+                const arr = action[branch.key];
+                const [moved] = arr.splice(data.childIndex, 1);
+                arr.splice(ci, 0, moved);
+                updateAction(index, action);
+                markDirty();
+                renderActionSequence();
+                saveCurrentWorkflow();
+                return;
+              }
+              if (data.type === 'main-action' && data.index !== index) {
+                // Drop from main sequence at specific position
+                const mainActions = state.currentWorkflow.actions;
+                const [movedAction] = mainActions.splice(data.index, 1);
+                action[branch.key] = action[branch.key] || [];
+                action[branch.key].splice(ci, 0, movedAction);
+                const newIndex = data.index < index ? index - 1 : index;
+                updateAction(newIndex, action);
+                markDirty();
+                renderActionSequence();
+                saveCurrentWorkflow();
+              }
+            } catch (err) {}
+          });
+
+          // Edit button
+          childEl.querySelector('.inline-child-edit').addEventListener('click', (e) => {
+            e.stopPropagation();
+            openNestedActionConfig(childAction, ci, action, branch.key, branch.label, index);
+          });
+
+          // Move-out button
+          childEl.querySelector('.inline-child-moveout').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const branchArr = action[branch.key];
+            if (!branchArr) return;
+            const [movedAction] = branchArr.splice(ci, 1);
+            state.currentWorkflow.actions.splice(index + 1, 0, movedAction);
+            updateAction(index, action);
+            markDirty();
+            renderActionSequence();
+            saveCurrentWorkflow();
+          });
+
+          // Delete button
+          childEl.querySelector('.inline-child-delete').addEventListener('click', (e) => {
+            e.stopPropagation();
+            action[branch.key].splice(ci, 1);
+            updateAction(index, action);
+            markDirty();
+            renderActionSequence();
+            saveCurrentWorkflow();
+          });
+
+          listEl.appendChild(childEl);
+        });
+
+        // Reset drag flag on mouseup
+        document.addEventListener('mouseup', () => { inlineDragAllowed = false; });
+      }
+
+      branchEl.appendChild(listEl);
+      childrenContainer.appendChild(branchEl);
+
+      // Drag/drop onto inline branch list (from main sequence)
+      listEl.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        listEl.classList.add('drag-over');
+      });
+
+      listEl.addEventListener('dragleave', (e) => {
+        if (!listEl.contains(e.relatedTarget)) {
+          listEl.classList.remove('drag-over');
+        }
+      });
+
+      listEl.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        listEl.classList.remove('drag-over');
+        
+        try {
+          const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+          if (data.type === 'main-action' && data.index !== index) {
+            const mainActions = state.currentWorkflow.actions;
+            const [movedAction] = mainActions.splice(data.index, 1);
+            action[branch.key] = action[branch.key] || [];
+            action[branch.key].push(movedAction);
+            const newIndex = data.index < index ? index - 1 : index;
+            updateAction(newIndex, action);
+            markDirty();
+            renderActionSequence();
+            saveCurrentWorkflow();
+          }
+        } catch (err) {}
+      });
+    });
+
+    item.appendChild(childrenContainer);
+  }
 
   return item;
 }
@@ -315,11 +659,53 @@ function getActionColor(type, alpha = 1) {
 }
 
 /**
+ * Get a compact label for an action (used in compact view)
+ */
+function getCompactLabel(action) {
+  switch (action.type) {
+    case 'mouse_move':
+      if (action.moveMode === 'bounds' && action.bounds) {
+        return `□${action.bounds.x},${action.bounds.y}`;
+      }
+      return action.x !== undefined ? `${action.x},${action.y}` : 'pos';
+    case 'mouse_click':
+      const btn = (action.button || 'left')[0].toUpperCase();
+      return action.clickType === 'double' ? `${btn}x2` : btn;
+    case 'keyboard':
+      if (action.mode === 'type') {
+        const text = action.text || '';
+        return text.substring(0, 8) + (text.length > 8 ? '…' : '');
+      }
+      return action.key || 'key';
+    case 'wait':
+      if (action.duration) {
+        const ms = action.duration.min || action.duration;
+        return `${ms}ms`;
+      }
+      return 'wait';
+    case 'conditional':
+      return 'if';
+    case 'loop':
+      return action.infinite ? '×∞' : `×${action.count || 1}`;
+    case 'image_detect':
+      return 'img';
+    case 'pixel_detect':
+      return 'px';
+    default:
+      return action.type;
+  }
+}
+
+/**
  * Get a summary string for an action
  */
 function getActionSummary(action) {
   switch (action.type) {
     case 'mouse_move':
+      if (action.moveMode === 'bounds' && action.bounds) {
+        const b = action.bounds;
+        return `Random in (${b.x}, ${b.y}) ${b.width}×${b.height}`;
+      }
       return action.x !== undefined ? `Move to (${action.x}, ${action.y})` : 'Move to position';
     case 'mouse_click':
       const btn = action.button || 'left';
@@ -341,7 +727,7 @@ function getActionSummary(action) {
     case 'conditional':
       return action.condition?.type || 'If condition';
     case 'loop':
-      return `Repeat ${action.count || 1} times`;
+      return action.infinite ? 'Repeat forever' : `Repeat ${action.count || 1} times`;
     case 'image_detect':
       return action.imageId ? 'Find saved image' : 'Find image';
     case 'pixel_detect':
@@ -379,7 +765,11 @@ function handleDrop(e) {
 
   if (!editorState.draggedAction) return;
 
-  if (editorState.draggedAction.isNew) {
+  if (editorState.draggedAction.isTemplate) {
+    // Insert template actions
+    const dropIndex = getDropIndex(e.clientY);
+    insertTemplateIntoWorkflow(editorState.draggedAction.templateId, dropIndex);
+  } else if (editorState.draggedAction.isNew) {
     // Add new action
     const dropIndex = getDropIndex(e.clientY);
     addActionToSequence(editorState.draggedAction.type, dropIndex);
@@ -643,44 +1033,125 @@ function closeConfigPanel() {
 /**
  * Render config fields for an action
  */
-function renderConfigFields(action, index) {
-  const configBody = document.getElementById('config-body');
+function renderConfigFields(action, index, targetConfigBody, saveCallback) {
+  const configBody = targetConfigBody || document.getElementById('config-body');
+  const save = saveCallback || (() => updateAction(index, action));
+  const rerender = () => renderConfigFields(action, index, configBody, save);
   configBody.innerHTML = '';
+
+  // Add name field at the top for all actions
+  const nameFieldHtml = `
+    <div class="config-field">
+      <label>Action Name (optional)</label>
+      <input type="text" id="config-action-name" value="${escapeHtml(action.name || '')}" placeholder="Give this action a name...">
+      <p class="config-field-hint">A custom name to identify this action</p>
+    </div>
+    <hr style="border: none; border-top: 1px solid var(--border-color); margin: var(--space-4) 0;">
+  `;
+
+  // Name field listener (shared across all types)
+  function setupName() {
+    const nameInput = document.getElementById('config-action-name');
+    if (nameInput) {
+      nameInput.addEventListener('input', (e) => {
+        action.name = e.target.value.trim() || undefined;
+        save();
+      });
+    }
+  }
 
   switch (action.type) {
     case 'mouse_move':
-      configBody.innerHTML = `
+      action.moveMode = action.moveMode || 'point';
+      const isPointMode = action.moveMode === 'point';
+      configBody.innerHTML = nameFieldHtml + `
         <div class="config-field">
-          <label>X Position</label>
-          <input type="number" id="config-x" value="${action.x || 0}">
+          <label>Move Mode</label>
+          <div class="toggle-group">
+            <button class="toggle-btn ${isPointMode ? 'active' : ''}" data-mode="point">Point</button>
+            <button class="toggle-btn ${!isPointMode ? 'active' : ''}" data-mode="bounds">Bounding Box</button>
+          </div>
+          <p class="config-field-hint">${isPointMode ? 'Move to an exact position' : 'Move to a random point within a rectangular area'}</p>
+        </div>
+        <div id="point-fields" ${!isPointMode ? 'style="display:none"' : ''}>
+          <div class="config-field">
+            <label>X Position</label>
+            <input type="number" id="config-x" value="${action.x || 0}">
+          </div>
+          <div class="config-field">
+            <label>Y Position</label>
+            <input type="number" id="config-y" value="${action.y || 0}">
+          </div>
+          <div class="config-field">
+            <button class="btn btn-secondary" id="btn-pick-position">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="22" y1="12" x2="18" y2="12"/>
+                <line x1="6" y1="12" x2="2" y2="12"/>
+                <line x1="12" y1="6" x2="12" y2="2"/>
+                <line x1="12" y1="22" x2="12" y2="18"/>
+              </svg>
+              Pick from Screen
+            </button>
+            <p class="config-field-hint">Click to select position with your mouse</p>
+          </div>
+        </div>
+        <div id="bounds-fields" ${isPointMode ? 'style="display:none"' : ''}>
+          <div class="config-field">
+            <label>Top-Left X</label>
+            <input type="number" id="config-bounds-x" value="${action.bounds?.x || 0}">
+          </div>
+          <div class="config-field">
+            <label>Top-Left Y</label>
+            <input type="number" id="config-bounds-y" value="${action.bounds?.y || 0}">
+          </div>
+          <div class="config-field">
+            <label>Width</label>
+            <input type="number" id="config-bounds-w" min="1" value="${action.bounds?.width || 100}">
+          </div>
+          <div class="config-field">
+            <label>Height</label>
+            <input type="number" id="config-bounds-h" min="1" value="${action.bounds?.height || 100}">
+          </div>
+          <div class="config-field">
+            <button class="btn btn-secondary" id="btn-pick-bounds">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <line x1="3" y1="9" x2="21" y2="9"/>
+                <line x1="9" y1="21" x2="9" y2="9"/>
+              </svg>
+              Pick Region from Screen
+            </button>
+            <p class="config-field-hint">Click and drag to select a rectangular region</p>
+          </div>
         </div>
         <div class="config-field">
-          <label>Y Position</label>
-          <input type="number" id="config-y" value="${action.y || 0}">
-        </div>
-        <div class="config-field">
-          <button class="btn btn-secondary" id="btn-pick-position">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="22" y1="12" x2="18" y2="12"/>
-              <line x1="6" y1="12" x2="2" y2="12"/>
-              <line x1="12" y1="6" x2="12" y2="2"/>
-              <line x1="12" y1="22" x2="12" y2="18"/>
-            </svg>
-            Pick from Screen
-          </button>
-          <p class="config-field-hint">Click to select position with your mouse</p>
+          <label>Movement Duration (ms)</label>
+          <input type="number" id="config-duration" min="0" max="5000" value="${action.duration ?? ''}" placeholder="Use default">
+          <p class="config-field-hint">Override global setting (leave empty for default)</p>
         </div>
       `;
 
+      setupName();
+
+      // Mode toggle
+      configBody.querySelectorAll('.toggle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          action.moveMode = btn.dataset.mode;
+          save();
+          rerender();
+        });
+      });
+
+      // Point mode fields
       document.getElementById('config-x').addEventListener('change', (e) => {
         action.x = parseInt(e.target.value) || 0;
-        updateAction(index, action);
+        save();
       });
 
       document.getElementById('config-y').addEventListener('change', (e) => {
         action.y = parseInt(e.target.value) || 0;
-        updateAction(index, action);
+        save();
       });
 
       document.getElementById('btn-pick-position').addEventListener('click', async () => {
@@ -689,13 +1160,55 @@ function renderConfigFields(action, index) {
           document.getElementById('config-y').value = pos.y;
           action.x = pos.x;
           action.y = pos.y;
-          updateAction(index, action);
+          save();
         });
+      });
+
+      // Bounds mode fields
+      document.getElementById('config-bounds-x').addEventListener('change', (e) => {
+        action.bounds = action.bounds || { x: 0, y: 0, width: 100, height: 100 };
+        action.bounds.x = parseInt(e.target.value) || 0;
+        save();
+      });
+
+      document.getElementById('config-bounds-y').addEventListener('change', (e) => {
+        action.bounds = action.bounds || { x: 0, y: 0, width: 100, height: 100 };
+        action.bounds.y = parseInt(e.target.value) || 0;
+        save();
+      });
+
+      document.getElementById('config-bounds-w').addEventListener('change', (e) => {
+        action.bounds = action.bounds || { x: 0, y: 0, width: 100, height: 100 };
+        action.bounds.width = Math.max(1, parseInt(e.target.value) || 100);
+        save();
+      });
+
+      document.getElementById('config-bounds-h').addEventListener('change', (e) => {
+        action.bounds = action.bounds || { x: 0, y: 0, width: 100, height: 100 };
+        action.bounds.height = Math.max(1, parseInt(e.target.value) || 100);
+        save();
+      });
+
+      document.getElementById('btn-pick-bounds').addEventListener('click', async () => {
+        await pickRegionFromScreen((region) => {
+          action.bounds = { x: region.x, y: region.y, width: region.width, height: region.height };
+          document.getElementById('config-bounds-x').value = region.x;
+          document.getElementById('config-bounds-y').value = region.y;
+          document.getElementById('config-bounds-w').value = region.width;
+          document.getElementById('config-bounds-h').value = region.height;
+          save();
+        });
+      });
+
+      document.getElementById('config-duration').addEventListener('change', (e) => {
+        const val = e.target.value.trim();
+        action.duration = val === '' ? undefined : parseInt(val);
+        save();
       });
       break;
 
     case 'mouse_click':
-      configBody.innerHTML = `
+      configBody.innerHTML = nameFieldHtml + `
         <div class="config-field">
           <label>Button</label>
           <select id="config-button">
@@ -721,29 +1234,31 @@ function renderConfigFields(action, index) {
         </div>
       `;
 
+      setupName();
+
       document.getElementById('config-button').addEventListener('change', (e) => {
         action.button = e.target.value;
-        updateAction(index, action);
+        save();
       });
 
       document.getElementById('config-click-type').addEventListener('change', (e) => {
         action.clickType = e.target.value;
-        updateAction(index, action);
+        save();
       });
 
       document.getElementById('config-click-x').addEventListener('change', (e) => {
         action.x = e.target.value ? parseInt(e.target.value) : undefined;
-        updateAction(index, action);
+        save();
       });
 
       document.getElementById('config-click-y').addEventListener('change', (e) => {
         action.y = e.target.value ? parseInt(e.target.value) : undefined;
-        updateAction(index, action);
+        save();
       });
       break;
 
     case 'keyboard':
-      configBody.innerHTML = `
+      configBody.innerHTML = nameFieldHtml + `
         <div class="config-field">
           <label>Mode</label>
           <select id="config-kb-mode">
@@ -762,26 +1277,28 @@ function renderConfigFields(action, index) {
         </div>
       `;
 
+      setupName();
+
       document.getElementById('config-kb-mode').addEventListener('change', (e) => {
         action.mode = e.target.value;
         document.getElementById('field-text').style.display = action.mode === 'type' ? '' : 'none';
         document.getElementById('field-key').style.display = action.mode === 'press' ? '' : 'none';
-        updateAction(index, action);
+        save();
       });
 
       document.getElementById('config-text').addEventListener('input', (e) => {
         action.text = e.target.value;
-        updateAction(index, action);
+        save();
       });
 
       document.getElementById('config-key').addEventListener('change', (e) => {
         action.key = e.target.value;
-        updateAction(index, action);
+        save();
       });
       break;
 
     case 'wait':
-      configBody.innerHTML = `
+      configBody.innerHTML = nameFieldHtml + `
         <div class="config-field">
           <label>Duration (milliseconds)</label>
           <div class="range-inputs">
@@ -793,33 +1310,35 @@ function renderConfigFields(action, index) {
         </div>
       `;
 
+      setupName();
+
       document.getElementById('config-wait-min').addEventListener('change', (e) => {
         action.duration = action.duration || {};
         action.duration.min = parseInt(e.target.value) || 500;
-        updateAction(index, action);
+        save();
       });
 
       document.getElementById('config-wait-max').addEventListener('change', (e) => {
         action.duration = action.duration || {};
         action.duration.max = parseInt(e.target.value) || 1000;
-        updateAction(index, action);
+        save();
       });
       break;
 
     case 'conditional':
-      renderConditionalConfig(configBody, action, index);
+      renderConditionalConfig(configBody, action, index, nameFieldHtml, save);
       break;
 
     case 'loop':
-      renderLoopConfig(configBody, action, index);
+      renderLoopConfig(configBody, action, index, nameFieldHtml, save);
       break;
 
     case 'image_detect':
-      renderImageDetectConfig(configBody, action, index);
+      renderImageDetectConfig(configBody, action, index, nameFieldHtml, save);
       break;
 
     case 'pixel_detect':
-      renderPixelDetectConfig(configBody, action, index);
+      renderPixelDetectConfig(configBody, action, index, nameFieldHtml, save);
       break;
 
     default:
@@ -842,12 +1361,13 @@ function updateAction(index, action) {
 /**
  * Render Conditional action config
  */
-function renderConditionalConfig(configBody, action, index) {
+function renderConditionalConfig(configBody, action, index, nameFieldHtml = '', save) {
+  if (!save) save = () => updateAction(index, action);
   action.condition = action.condition || { type: 'image_present' };
   action.thenActions = action.thenActions || [];
   action.elseActions = action.elseActions || [];
 
-  configBody.innerHTML = `
+  configBody.innerHTML = nameFieldHtml + `
     <div class="config-field">
       <label>Condition Type</label>
       <select id="config-condition-type">
@@ -882,13 +1402,13 @@ function renderConditionalConfig(configBody, action, index) {
     </div>
     <div class="config-section">
       <div class="config-section-header">
-        <span>Then (if true): ${action.thenActions.length} actions</span>
+        <span>Then (if true): <span id="then-actions-count">${action.thenActions.length}</span> actions</span>
         <button class="btn btn-secondary btn-sm" id="btn-edit-then">Edit</button>
       </div>
     </div>
     <div class="config-section">
       <div class="config-section-header">
-        <span>Else (if false): ${action.elseActions.length} actions</span>
+        <span>Else (if false): <span id="else-actions-count">${action.elseActions.length}</span> actions</span>
         <button class="btn btn-secondary btn-sm" id="btn-edit-else">Edit</button>
       </div>
     </div>
@@ -903,6 +1423,14 @@ function renderConditionalConfig(configBody, action, index) {
   // Load images for dropdown
   loadImageOptions('config-condition-image', action.condition.imageId);
 
+  const nameInput = document.getElementById('config-action-name');
+  if (nameInput) {
+    nameInput.addEventListener('input', (e) => {
+      action.name = e.target.value.trim() || undefined;
+      save();
+    });
+  }
+
   document.getElementById('config-condition-type').addEventListener('change', (e) => {
     action.condition.type = e.target.value;
     const isPixel = e.target.value === 'pixel_match';
@@ -910,39 +1438,39 @@ function renderConditionalConfig(configBody, action, index) {
     document.getElementById('cond-confidence-field').style.display = isPixel ? 'none' : '';
     document.getElementById('cond-pixel-field').style.display = isPixel ? '' : 'none';
     document.getElementById('cond-tolerance-field').style.display = isPixel ? '' : 'none';
-    updateAction(index, action);
+    save();
   });
 
   document.getElementById('config-condition-image').addEventListener('change', (e) => {
     action.condition.imageId = e.target.value || null;
-    updateAction(index, action);
+    save();
   });
 
   document.getElementById('config-condition-confidence').addEventListener('input', (e) => {
     const val = parseInt(e.target.value);
     document.getElementById('cond-conf-value').textContent = val + '%';
     action.condition.confidence = val / 100;
-    updateAction(index, action);
+    save();
   });
 
   document.getElementById('config-condition-color').addEventListener('change', (e) => {
     action.condition.color = hexToRgb(e.target.value);
     document.getElementById('cond-color-preview').style.background = e.target.value;
-    updateAction(index, action);
+    save();
   });
 
   document.getElementById('config-condition-tolerance').addEventListener('input', (e) => {
     const val = parseInt(e.target.value);
     document.getElementById('cond-tol-value').textContent = val;
     action.condition.tolerance = val;
-    updateAction(index, action);
+    save();
   });
 
   document.getElementById('btn-capture-cond-image').addEventListener('click', () => {
     captureImageTemplate((imageId) => {
       action.condition.imageId = imageId;
       loadImageOptions('config-condition-image', imageId);
-      updateAction(index, action);
+      save();
     });
   });
 
@@ -956,19 +1484,27 @@ function renderConditionalConfig(configBody, action, index) {
 
   document.getElementById('config-continue-error').addEventListener('change', (e) => {
     action.continueOnError = e.target.checked;
-    updateAction(index, action);
+    save();
   });
 }
 
 /**
  * Render Loop action config
  */
-function renderLoopConfig(configBody, action, index) {
+function renderLoopConfig(configBody, action, index, nameFieldHtml = '', save) {
+  if (!save) save = () => updateAction(index, action);
   action.actions = action.actions || [];
   action.delay = action.delay || { min: 500, max: 1000 };
 
-  configBody.innerHTML = `
+  configBody.innerHTML = nameFieldHtml + `
     <div class="config-field">
+      <label class="checkbox-label">
+        <input type="checkbox" id="config-loop-infinite" ${action.infinite ? 'checked' : ''}>
+        Infinite loop
+      </label>
+      <p class="config-field-hint">Loop forever until the workflow is stopped</p>
+    </div>
+    <div class="config-field" id="loop-count-field" ${action.infinite ? 'style="display:none"' : ''}>
       <label>Number of Iterations</label>
       <input type="number" id="config-loop-count" min="1" max="10000" value="${action.count || 3}">
     </div>
@@ -982,7 +1518,7 @@ function renderLoopConfig(configBody, action, index) {
     </div>
     <div class="config-section">
       <div class="config-section-header">
-        <span>Loop Actions: ${action.actions.length} actions</span>
+        <span>Loop Actions: <span id="loop-actions-count">${action.actions.length}</span> actions</span>
         <button class="btn btn-secondary btn-sm" id="btn-edit-loop-actions">Edit</button>
       </div>
       <p class="config-field-hint">These actions will repeat for each iteration</p>
@@ -995,19 +1531,33 @@ function renderLoopConfig(configBody, action, index) {
     </div>
   `;
 
+  const nameInput = document.getElementById('config-action-name');
+  if (nameInput) {
+    nameInput.addEventListener('input', (e) => {
+      action.name = e.target.value.trim() || undefined;
+      save();
+    });
+  }
+
+  document.getElementById('config-loop-infinite').addEventListener('change', (e) => {
+    action.infinite = e.target.checked;
+    document.getElementById('loop-count-field').style.display = e.target.checked ? 'none' : '';
+    save();
+  });
+
   document.getElementById('config-loop-count').addEventListener('change', (e) => {
     action.count = parseInt(e.target.value) || 3;
-    updateAction(index, action);
+    save();
   });
 
   document.getElementById('config-loop-delay-min').addEventListener('change', (e) => {
     action.delay.min = parseInt(e.target.value) || 500;
-    updateAction(index, action);
+    save();
   });
 
   document.getElementById('config-loop-delay-max').addEventListener('change', (e) => {
     action.delay.max = parseInt(e.target.value) || 1000;
-    updateAction(index, action);
+    save();
   });
 
   document.getElementById('btn-edit-loop-actions').addEventListener('click', () => {
@@ -1016,15 +1566,16 @@ function renderLoopConfig(configBody, action, index) {
 
   document.getElementById('config-loop-continue-error').addEventListener('change', (e) => {
     action.continueOnError = e.target.checked;
-    updateAction(index, action);
+    save();
   });
 }
 
 /**
  * Render Image Detect action config
  */
-function renderImageDetectConfig(configBody, action, index) {
-  configBody.innerHTML = `
+function renderImageDetectConfig(configBody, action, index, nameFieldHtml = '', save) {
+  if (!save) save = () => updateAction(index, action);
+  configBody.innerHTML = nameFieldHtml + `
     <div class="config-field">
       <label>Image Template</label>
       <select id="config-image-id">
@@ -1067,9 +1618,17 @@ function renderImageDetectConfig(configBody, action, index) {
   // Load images for dropdown
   loadImageOptions('config-image-id', action.imageId);
 
+  const nameInput = document.getElementById('config-action-name');
+  if (nameInput) {
+    nameInput.addEventListener('input', (e) => {
+      action.name = e.target.value.trim() || undefined;
+      save();
+    });
+  }
+
   document.getElementById('config-image-id').addEventListener('change', (e) => {
     action.imageId = e.target.value || null;
-    updateAction(index, action);
+    save();
     updateImagePreview(action.imageId);
   });
 
@@ -1077,7 +1636,7 @@ function renderImageDetectConfig(configBody, action, index) {
     captureImageTemplate((imageId) => {
       action.imageId = imageId;
       loadImageOptions('config-image-id', imageId);
-      updateAction(index, action);
+      save();
       updateImagePreview(imageId);
     });
   });
@@ -1086,17 +1645,17 @@ function renderImageDetectConfig(configBody, action, index) {
     const val = parseInt(e.target.value);
     document.getElementById('conf-value').textContent = val + '%';
     action.confidence = val / 100;
-    updateAction(index, action);
+    save();
   });
 
   document.getElementById('config-fail-not-found').addEventListener('change', (e) => {
     action.failOnNotFound = e.target.checked;
-    updateAction(index, action);
+    save();
   });
 
   document.getElementById('config-img-continue-error').addEventListener('change', (e) => {
     action.continueOnError = e.target.checked;
-    updateAction(index, action);
+    save();
   });
 
   // Show preview if image selected
@@ -1108,10 +1667,11 @@ function renderImageDetectConfig(configBody, action, index) {
 /**
  * Render Pixel Detect action config
  */
-function renderPixelDetectConfig(configBody, action, index) {
+function renderPixelDetectConfig(configBody, action, index, nameFieldHtml = '', save) {
+  if (!save) save = () => updateAction(index, action);
   action.color = action.color || { r: 255, g: 0, b: 0 };
 
-  configBody.innerHTML = `
+  configBody.innerHTML = nameFieldHtml + `
     <div class="config-field">
       <label>Target Color</label>
       <div class="color-picker-row">
@@ -1156,13 +1716,21 @@ function renderPixelDetectConfig(configBody, action, index) {
     </div>
   `;
 
+  const nameInput = document.getElementById('config-action-name');
+  if (nameInput) {
+    nameInput.addEventListener('input', (e) => {
+      action.name = e.target.value.trim() || undefined;
+      save();
+    });
+  }
+
   const updateColorFromHex = (hex) => {
     action.color = hexToRgb(hex);
     document.getElementById('color-preview').style.background = hex;
     document.getElementById('config-pixel-r').value = action.color.r;
     document.getElementById('config-pixel-g').value = action.color.g;
     document.getElementById('config-pixel-b').value = action.color.b;
-    updateAction(index, action);
+    save();
   };
 
   const updateColorFromRgb = () => {
@@ -1174,7 +1742,7 @@ function renderPixelDetectConfig(configBody, action, index) {
     const hex = rgbToHex(action.color);
     document.getElementById('config-pixel-color').value = hex;
     document.getElementById('color-preview').style.background = hex;
-    updateAction(index, action);
+    save();
   };
 
   document.getElementById('config-pixel-color').addEventListener('change', (e) => {
@@ -1194,7 +1762,7 @@ function renderPixelDetectConfig(configBody, action, index) {
       document.getElementById('config-pixel-r').value = color.r;
       document.getElementById('config-pixel-g').value = color.g;
       document.getElementById('config-pixel-b').value = color.b;
-      updateAction(index, action);
+      save();
     });
   });
 
@@ -1202,17 +1770,17 @@ function renderPixelDetectConfig(configBody, action, index) {
     const val = parseInt(e.target.value);
     document.getElementById('tol-value').textContent = val;
     action.tolerance = val;
-    updateAction(index, action);
+    save();
   });
 
   document.getElementById('config-pixel-fail-not-found').addEventListener('change', (e) => {
     action.failOnNotFound = e.target.checked;
-    updateAction(index, action);
+    save();
   });
 
   document.getElementById('config-pixel-continue-error').addEventListener('change', (e) => {
     action.continueOnError = e.target.checked;
-    updateAction(index, action);
+    save();
   });
 }
 
@@ -1315,18 +1883,37 @@ async function captureImageTemplate(callback) {
  */
 function openNestedActionsEditor(parentAction, actionsKey, title, parentIndex) {
   const nestedActions = parentAction[actionsKey] || [];
+  const mainActions = state.currentWorkflow ? state.currentWorkflow.actions : [];
+  const templates = editorState.templates || [];
 
   showModal(
     title,
     `
       <div class="nested-editor">
-        <div class="nested-actions-list" id="nested-actions-list">
-          ${nestedActions.length === 0 ? '<p class="empty-nested">No actions yet. Add actions below.</p>' : ''}
+        <div class="nested-toolbar">
+          <button class="btn btn-secondary" id="btn-nested-quick-record" title="Quick Record into this branch">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
+              <circle cx="12" cy="12" r="10"/>
+              <circle cx="12" cy="12" r="3" fill="currentColor"/>
+            </svg>
+            Quick Record
+          </button>
+          <span class="nested-drop-hint">Drag actions here from main sequence</span>
+        </div>
+        <div class="nested-actions-list" id="nested-actions-list" data-parent-index="${parentIndex}" data-actions-key="${actionsKey}">
+          ${nestedActions.length === 0 ? '<p class="empty-nested" id="empty-nested-msg">No actions yet. Add actions below or drag from main sequence.</p>' : ''}
           ${nestedActions.map((action, i) => `
-            <div class="nested-action-item" data-index="${i}">
+            <div class="nested-action-item" data-index="${i}" draggable="true">
+              <span class="nested-drag-handle">⋮⋮</span>
               <span class="nested-num">${i + 1}</span>
               <span class="nested-name">${ACTION_TYPES[action.type]?.name || action.type}</span>
               <span class="nested-summary">${getActionSummary(action)}</span>
+              <button class="btn btn-icon btn-sm" data-edit="${i}" title="Edit">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+              </button>
               <button class="btn btn-icon btn-danger btn-sm" data-delete="${i}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -1335,23 +1922,74 @@ function openNestedActionsEditor(parentAction, actionsKey, title, parentIndex) {
             </div>
           `).join('')}
         </div>
-        <div class="nested-add-section">
-          <label>Add Action</label>
-          <select id="nested-action-type">
-            ${Object.entries(ACTION_TYPES).map(([type, meta]) => `
-              <option value="${type}">${meta.name}</option>
-            `).join('')}
-          </select>
-          <button class="btn btn-primary" id="btn-add-nested">Add</button>
+        <div class="nested-add-tabs">
+          <div class="nested-tab-bar">
+            <button class="nested-tab active" data-tab="new">New Action</button>
+            <button class="nested-tab" data-tab="workflow">From Workflow</button>
+            <button class="nested-tab" data-tab="templates">Templates</button>
+          </div>
+          <div class="nested-tab-content" id="nested-tab-new">
+            <div class="nested-add-row">
+              <select id="nested-action-type">
+                ${Object.entries(ACTION_TYPES).map(([type, meta]) => `
+                  <option value="${type}">${meta.name}</option>
+                `).join('')}
+              </select>
+              <button class="btn btn-primary" id="btn-add-nested">Add</button>
+            </div>
+          </div>
+          <div class="nested-tab-content hidden" id="nested-tab-workflow">
+            ${mainActions.length === 0 ? '<p class="empty-nested">No actions in workflow</p>' : `
+              <div class="nested-source-list">
+                ${mainActions.map((action, i) => {
+                  if (i === parentIndex) return '';
+                  return `
+                    <div class="nested-source-item" data-workflow-index="${i}">
+                      <span class="nested-num">${i + 1}</span>
+                      <span class="nested-name">${ACTION_TYPES[action.type]?.name || action.type}</span>
+                      <span class="nested-summary">${getActionSummary(action)}</span>
+                      <div class="nested-source-btns">
+                        <button class="btn btn-secondary btn-sm" data-copy-index="${i}" title="Copy into this branch">Copy</button>
+                        <button class="btn btn-primary btn-sm" data-move-index="${i}" title="Move into this branch (removes from main)">Move</button>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `}
+          </div>
+          <div class="nested-tab-content hidden" id="nested-tab-templates">
+            ${templates.length === 0 ? '<p class="empty-nested">No saved templates</p>' : `
+              <div class="nested-source-list">
+                ${templates.map(t => `
+                  <div class="nested-source-item" data-template-id="${t.id}">
+                    <span class="nested-name">${escapeHtml(t.name)}</span>
+                    <span class="nested-summary">${t.actions.length} actions</span>
+                    <button class="btn btn-primary btn-sm" data-insert-template="${t.id}">Insert</button>
+                  </div>
+                `).join('')}
+              </div>
+            `}
+          </div>
         </div>
       </div>
     `,
     [
-      { label: 'Done', primary: true, action: 'close' }
+      { label: 'Done', primary: true, action: 'close', onClick: () => updateNestedActionCounts(parentAction, actionsKey) }
     ]
   );
 
-  // Add action handler
+  // Tab switching
+  document.querySelectorAll('.nested-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.nested-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.nested-tab-content').forEach(c => c.classList.add('hidden'));
+      tab.classList.add('active');
+      document.getElementById(`nested-tab-${tab.dataset.tab}`).classList.remove('hidden');
+    });
+  });
+
+  // Add new action handler
   document.getElementById('btn-add-nested').addEventListener('click', () => {
     const type = document.getElementById('nested-action-type').value;
     const newAction = createDefaultAction(type);
@@ -1361,14 +1999,268 @@ function openNestedActionsEditor(parentAction, actionsKey, title, parentIndex) {
     openNestedActionsEditor(parentAction, actionsKey, title, parentIndex);
   });
 
-  // Delete handlers
-  document.querySelectorAll('[data-delete]').forEach(btn => {
+  // Copy from workflow handlers
+  document.querySelectorAll('[data-copy-index]').forEach(btn => {
     btn.addEventListener('click', () => {
-      const idx = parseInt(btn.dataset.delete);
-      parentAction[actionsKey].splice(idx, 1);
+      const srcIndex = parseInt(btn.dataset.copyIndex);
+      const srcAction = mainActions[srcIndex];
+      if (!srcAction) return;
+      const copy = JSON.parse(JSON.stringify(srcAction));
+      copy.id = generateId();
+      parentAction[actionsKey] = parentAction[actionsKey] || [];
+      parentAction[actionsKey].push(copy);
       updateAction(parentIndex, parentAction);
       openNestedActionsEditor(parentAction, actionsKey, title, parentIndex);
     });
+  });
+
+  // Move from workflow handlers
+  document.querySelectorAll('[data-move-index]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const srcIndex = parseInt(btn.dataset.moveIndex);
+      const [movedAction] = mainActions.splice(srcIndex, 1);
+      parentAction[actionsKey] = parentAction[actionsKey] || [];
+      parentAction[actionsKey].push(movedAction);
+      // Recalculate parentIndex since we removed an item from main
+      const newParentIndex = srcIndex < parentIndex ? parentIndex - 1 : parentIndex;
+      updateAction(newParentIndex, parentAction);
+      renderActionSequence();
+      openNestedActionsEditor(parentAction, actionsKey, title, newParentIndex);
+    });
+  });
+
+  // Insert template handlers
+  document.querySelectorAll('[data-insert-template]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const templateId = btn.dataset.insertTemplate;
+      const template = templates.find(t => t.id === templateId);
+      if (!template) return;
+      const copiedActions = template.actions.map(a => {
+        const copy = JSON.parse(JSON.stringify(a));
+        copy.id = generateId();
+        return copy;
+      });
+      parentAction[actionsKey] = parentAction[actionsKey] || [];
+      parentAction[actionsKey].push(...copiedActions);
+      updateAction(parentIndex, parentAction);
+      openNestedActionsEditor(parentAction, actionsKey, title, parentIndex);
+    });
+  });
+
+  // Quick Record handler
+  document.getElementById('btn-nested-quick-record').addEventListener('click', async () => {
+    window._nestedQuickRecordTarget = {
+      parentAction,
+      actionsKey,
+      parentIndex,
+      title
+    };
+    
+    hideModal();
+    
+    if (window.quickRecord) {
+      window.quickRecord.startForNested(parentAction, actionsKey, parentIndex, title);
+    }
+  });
+
+  // Scope all queries to the nested actions list
+  const nestedList = document.getElementById('nested-actions-list');
+
+  // Edit handlers
+  if (nestedList) {
+    nestedList.querySelectorAll('[data-edit]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.edit);
+        const nestedAction = parentAction[actionsKey][idx];
+        if (nestedAction) {
+          openNestedActionConfig(nestedAction, idx, parentAction, actionsKey, title, parentIndex);
+        }
+      });
+    });
+
+    // Delete handlers
+    nestedList.querySelectorAll('[data-delete]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.delete);
+        parentAction[actionsKey].splice(idx, 1);
+        updateAction(parentIndex, parentAction);
+        openNestedActionsEditor(parentAction, actionsKey, title, parentIndex);
+      });
+    });
+  }
+
+  // Setup drag/drop for nested items
+  setupNestedDragDrop(parentAction, actionsKey, parentIndex, title);
+}
+
+/**
+ * Open config editor for a single nested action (uses shared renderConfigFields)
+ */
+function openNestedActionConfig(action, nestedIndex, parentAction, actionsKey, parentTitle, parentIndex) {
+  const meta = ACTION_TYPES[action.type] || { name: 'Action' };
+
+  showModal(
+    `Edit ${meta.name} (#${nestedIndex + 1} in ${parentTitle})`,
+    `<div id="nested-config-body" class="nested-config-panel"></div>`,
+    [
+      { label: 'Back', class: 'btn-secondary', onClick: () => {
+        updateAction(parentIndex, parentAction);
+        setTimeout(() => openNestedActionsEditor(parentAction, actionsKey, parentTitle, parentIndex), 50);
+      }, closeOnClick: true },
+      { label: 'Done', primary: true, action: 'close', onClick: () => {
+        updateAction(parentIndex, parentAction);
+        updateNestedActionCounts(parentAction, actionsKey);
+      }}
+    ]
+  );
+
+  const configBody = document.getElementById('nested-config-body');
+  if (!configBody) return;
+
+  const save = () => updateAction(parentIndex, parentAction);
+  renderConfigFields(action, parentIndex, configBody, save);
+}
+
+/**
+ * Update the action counts displayed in the config panel for conditionals/loops
+ */
+function updateNestedActionCounts(parentAction, actionsKey) {
+  // Update conditional counts
+  if (actionsKey === 'thenActions') {
+    const el = document.getElementById('then-actions-count');
+    if (el) el.textContent = (parentAction.thenActions || []).length;
+  } else if (actionsKey === 'elseActions') {
+    const el = document.getElementById('else-actions-count');
+    if (el) el.textContent = (parentAction.elseActions || []).length;
+  } else if (actionsKey === 'actions') {
+    // Loop actions
+    const el = document.getElementById('loop-actions-count');
+    if (el) el.textContent = (parentAction.actions || []).length;
+  }
+}
+
+/**
+ * Setup drag/drop for nested actions list
+ */
+function setupNestedDragDrop(parentAction, actionsKey, parentIndex, title) {
+  const list = document.getElementById('nested-actions-list');
+  if (!list) return;
+
+  let draggedIndex = null;
+  let dragAllowed = false;
+
+  // Reset drag flag on any mouseup
+  document.addEventListener('mouseup', () => { dragAllowed = false; }, { once: false });
+
+  // Make items draggable for reordering - only from drag handle
+  list.querySelectorAll('.nested-action-item').forEach(item => {
+    // Track mousedown on drag handle to allow drag
+    const handle = item.querySelector('.nested-drag-handle');
+    if (handle) {
+      handle.addEventListener('mousedown', () => { dragAllowed = true; });
+    }
+
+    item.addEventListener('dragstart', (e) => {
+      // Only allow drag if initiated from the handle
+      if (!dragAllowed) {
+        e.preventDefault();
+        return;
+      }
+      dragAllowed = false;
+      draggedIndex = parseInt(item.dataset.index);
+      item.classList.add('dragging');
+      e.dataTransfer.setData('text/plain', JSON.stringify({
+        type: 'nested-action',
+        index: draggedIndex,
+        parentIndex,
+        actionsKey
+      }));
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    item.addEventListener('dragend', () => {
+      item.classList.remove('dragging');
+      draggedIndex = null;
+      dragAllowed = false;
+      list.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+    });
+
+    item.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      const targetIndex = parseInt(item.dataset.index);
+      if (draggedIndex !== null && targetIndex !== draggedIndex) {
+        item.classList.add('drag-over');
+      }
+    });
+
+    item.addEventListener('dragleave', () => {
+      item.classList.remove('drag-over');
+    });
+
+    item.addEventListener('drop', (e) => {
+      e.preventDefault();
+      item.classList.remove('drag-over');
+      
+      const targetIndex = parseInt(item.dataset.index);
+      
+      // Check if dropping from main sequence
+      try {
+        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+        if (data.type === 'main-action') {
+          // Moving from main sequence to nested
+          const mainActions = state.currentWorkflow.actions;
+          const [movedAction] = mainActions.splice(data.index, 1);
+          parentAction[actionsKey] = parentAction[actionsKey] || [];
+          parentAction[actionsKey].splice(targetIndex, 0, movedAction);
+          updateAction(parentIndex, parentAction);
+          renderActionSequence();
+          openNestedActionsEditor(parentAction, actionsKey, title, parentIndex);
+          return;
+        }
+      } catch (err) {}
+      
+      // Reordering within nested list
+      if (draggedIndex !== null && draggedIndex !== targetIndex) {
+        const actions = parentAction[actionsKey];
+        const [moved] = actions.splice(draggedIndex, 1);
+        actions.splice(targetIndex, 0, moved);
+        updateAction(parentIndex, parentAction);
+        openNestedActionsEditor(parentAction, actionsKey, title, parentIndex);
+      }
+    });
+  });
+
+  // Allow dropping on the list itself (for empty list or end of list)
+  list.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    list.classList.add('drag-over');
+  });
+
+  list.addEventListener('dragleave', (e) => {
+    if (!list.contains(e.relatedTarget)) {
+      list.classList.remove('drag-over');
+    }
+  });
+
+  list.addEventListener('drop', (e) => {
+    e.preventDefault();
+    list.classList.remove('drag-over');
+    
+    // Check if dropping from main sequence
+    try {
+      const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+      if (data.type === 'main-action') {
+        const mainActions = state.currentWorkflow.actions;
+        const [movedAction] = mainActions.splice(data.index, 1);
+        parentAction[actionsKey] = parentAction[actionsKey] || [];
+        parentAction[actionsKey].push(movedAction);
+        updateAction(parentIndex, parentAction);
+        renderActionSequence();
+        openNestedActionsEditor(parentAction, actionsKey, title, parentIndex);
+      }
+    } catch (err) {}
   });
 }
 
@@ -1392,6 +2284,29 @@ async function pickPositionFromScreen(callback) {
   } catch (error) {
     console.error('Position capture failed:', error);
     showToast('error', 'Error', 'Failed to capture position');
+  }
+}
+
+/**
+ * Pick a rectangular region from screen using overlay
+ */
+async function pickRegionFromScreen(callback) {
+  try {
+    const region = await window.workflowAPI.selectScreenRegion();
+
+    if (!region) {
+      showToast('info', 'Cancelled', 'Region selection cancelled');
+      return;
+    }
+
+    showToast('success', 'Region Captured', `(${region.x}, ${region.y}) ${region.width}×${region.height}`);
+
+    if (callback) {
+      callback(region);
+    }
+  } catch (error) {
+    console.error('Region capture failed:', error);
+    showToast('error', 'Error', 'Failed to capture region');
   }
 }
 
@@ -1424,4 +2339,314 @@ async function pickColorFromScreen(callback) {
     console.error('Color capture failed:', error);
     showToast('error', 'Error', 'Failed to capture color');
   }
+}
+
+// ==================== TEMPLATES ====================
+
+/**
+ * Load all templates
+ */
+async function loadTemplates() {
+  try {
+    editorState.templates = await window.workflowAPI.getTemplates();
+    renderTemplateList();
+  } catch (error) {
+    console.error('Failed to load templates:', error);
+  }
+}
+
+/**
+ * Render the template list in the sidebar
+ */
+function renderTemplateList() {
+  if (!templateList) return;
+
+  const emptyEl = document.getElementById('empty-templates');
+
+  if (editorState.templates.length === 0) {
+    templateList.innerHTML = '';
+    if (emptyEl) {
+      emptyEl.style.display = '';
+      templateList.appendChild(emptyEl);
+    }
+    return;
+  }
+
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  templateList.innerHTML = editorState.templates.map(template => `
+    <div class="template-item" data-template-id="${template.id}" draggable="true">
+      <div class="template-item-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+          <path d="M3 9h18"/>
+          <path d="M9 21V9"/>
+        </svg>
+      </div>
+      <div class="template-item-info">
+        <div class="template-item-name">${escapeHtml(template.name)}</div>
+        <div class="template-item-meta">${template.actions.length} actions</div>
+      </div>
+      <div class="template-item-actions">
+        <button class="btn btn-icon btn-sm" data-action="rename" title="Rename">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+        </button>
+        <button class="btn btn-icon btn-danger btn-sm" data-action="delete" title="Delete">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  `).join('');
+
+  // Add event listeners
+  templateList.querySelectorAll('.template-item').forEach(item => {
+    const templateId = item.dataset.templateId;
+
+    // Double click to insert
+    item.addEventListener('dblclick', () => {
+      insertTemplateIntoWorkflow(templateId);
+    });
+
+    // Drag to insert
+    item.addEventListener('dragstart', (e) => {
+      editorState.draggedAction = { templateId, isTemplate: true };
+      e.dataTransfer.effectAllowed = 'copy';
+      item.classList.add('dragging');
+    });
+
+    item.addEventListener('dragend', () => {
+      item.classList.remove('dragging');
+      editorState.draggedAction = null;
+    });
+
+    // Rename button
+    item.querySelector('[data-action="rename"]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openRenameTemplateModal(templateId);
+    });
+
+    // Delete button
+    item.querySelector('[data-action="delete"]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteTemplate(templateId);
+    });
+  });
+}
+
+/**
+ * Open modal to save selected actions as template
+ */
+function openSaveAsTemplateModal() {
+  if (!state.currentWorkflow || !state.currentWorkflow.actions || state.currentWorkflow.actions.length === 0) {
+    showToast('warning', 'No Actions', 'Add some actions to the workflow first');
+    return;
+  }
+
+  const actions = state.currentWorkflow.actions;
+
+  showModal(
+    'Save as Template',
+    `
+      <div class="config-field">
+        <label>Template Name</label>
+        <input type="text" id="template-name" placeholder="My Template" value="">
+      </div>
+      <div class="config-field">
+        <label>Description (optional)</label>
+        <textarea id="template-description" rows="2" placeholder="What does this template do?"></textarea>
+      </div>
+      <div class="config-field">
+        <label>Select Actions to Include</label>
+        <div style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: var(--space-2);">
+          ${actions.map((action, i) => `
+            <label class="checkbox-label" style="padding: var(--space-1) 0;">
+              <input type="checkbox" class="template-action-checkbox" data-index="${i}" checked>
+              <span>${i + 1}. ${action.name ? escapeHtml(action.name) + ' - ' : ''}${ACTION_TYPES[action.type]?.name || action.type}</span>
+            </label>
+          `).join('')}
+        </div>
+      </div>
+    `,
+    [
+      { label: 'Cancel', class: 'btn-secondary', action: 'close' },
+      { label: 'Save Template', primary: true, onClick: saveAsTemplate }
+    ]
+  );
+
+  document.getElementById('template-name').focus();
+}
+
+/**
+ * Save selected actions as a new template
+ */
+async function saveAsTemplate() {
+  const name = document.getElementById('template-name').value.trim();
+  const description = document.getElementById('template-description').value.trim();
+
+  if (!name) {
+    showToast('error', 'Error', 'Please enter a template name');
+    return;
+  }
+
+  const checkboxes = document.querySelectorAll('.template-action-checkbox:checked');
+  const selectedIndices = Array.from(checkboxes).map(cb => parseInt(cb.dataset.index));
+
+  if (selectedIndices.length === 0) {
+    showToast('error', 'Error', 'Please select at least one action');
+    return;
+  }
+
+  // Deep copy selected actions with new IDs
+  const selectedActions = selectedIndices.map(i => {
+    const action = JSON.parse(JSON.stringify(state.currentWorkflow.actions[i]));
+    action.id = generateId(); // Generate new ID for the copy
+    return action;
+  });
+
+  try {
+    const template = await window.workflowAPI.createTemplate({
+      name,
+      description,
+      actions: selectedActions
+    });
+
+    editorState.templates.push(template);
+    renderTemplateList();
+    closeModal();
+    showToast('success', 'Template Saved', `"${name}" saved with ${selectedActions.length} actions`);
+  } catch (error) {
+    console.error('Failed to save template:', error);
+    showToast('error', 'Error', 'Failed to save template');
+  }
+}
+
+/**
+ * Insert a template's actions into the current workflow (as copies)
+ */
+async function insertTemplateIntoWorkflow(templateId, insertIndex = -1) {
+  if (!state.currentWorkflow) {
+    showToast('warning', 'No Workflow', 'Open a workflow first');
+    return;
+  }
+
+  const template = editorState.templates.find(t => t.id === templateId);
+  if (!template) {
+    showToast('error', 'Error', 'Template not found');
+    return;
+  }
+
+  // Deep copy actions with new IDs
+  const copiedActions = template.actions.map(action => {
+    const copy = JSON.parse(JSON.stringify(action));
+    copy.id = generateId();
+    return copy;
+  });
+
+  if (insertIndex === -1 || insertIndex >= state.currentWorkflow.actions.length) {
+    state.currentWorkflow.actions.push(...copiedActions);
+  } else {
+    state.currentWorkflow.actions.splice(insertIndex, 0, ...copiedActions);
+  }
+
+  markDirty();
+  renderActionSequence();
+  saveCurrentWorkflow();
+  showToast('success', 'Template Inserted', `Added ${copiedActions.length} actions from "${template.name}"`);
+}
+
+/**
+ * Open modal to rename a template
+ */
+function openRenameTemplateModal(templateId) {
+  const template = editorState.templates.find(t => t.id === templateId);
+  if (!template) return;
+
+  showModal(
+    'Rename Template',
+    `
+      <div class="config-field">
+        <label>Template Name</label>
+        <input type="text" id="rename-template-name" value="${escapeHtml(template.name)}">
+      </div>
+    `,
+    [
+      { label: 'Cancel', class: 'btn-secondary', action: 'close' },
+      { label: 'Save', primary: true, onClick: () => renameTemplate(templateId) }
+    ]
+  );
+
+  const input = document.getElementById('rename-template-name');
+  input.focus();
+  input.select();
+}
+
+/**
+ * Rename a template
+ */
+async function renameTemplate(templateId) {
+  const name = document.getElementById('rename-template-name').value.trim();
+
+  if (!name) {
+    showToast('error', 'Error', 'Please enter a name');
+    return;
+  }
+
+  try {
+    const updated = await window.workflowAPI.updateTemplate(templateId, { name });
+    const index = editorState.templates.findIndex(t => t.id === templateId);
+    if (index !== -1) {
+      editorState.templates[index] = updated;
+    }
+    renderTemplateList();
+    closeModal();
+    showToast('success', 'Renamed', `Template renamed to "${name}"`);
+  } catch (error) {
+    console.error('Failed to rename template:', error);
+    showToast('error', 'Error', 'Failed to rename template');
+  }
+}
+
+/**
+ * Delete a template
+ */
+async function deleteTemplate(templateId) {
+  const template = editorState.templates.find(t => t.id === templateId);
+  if (!template) return;
+
+  showModal(
+    'Delete Template',
+    `<p>Are you sure you want to delete "${escapeHtml(template.name)}"?</p>
+     <p style="color: var(--text-secondary); font-size: var(--text-sm);">This action cannot be undone.</p>`,
+    [
+      { label: 'Cancel', class: 'btn-secondary', action: 'close' },
+      { label: 'Delete', class: 'btn-danger', onClick: async () => {
+        try {
+          await window.workflowAPI.deleteTemplate(templateId);
+          editorState.templates = editorState.templates.filter(t => t.id !== templateId);
+          renderTemplateList();
+          closeModal();
+          showToast('success', 'Deleted', 'Template deleted');
+        } catch (error) {
+          console.error('Failed to delete template:', error);
+          showToast('error', 'Error', 'Failed to delete template');
+        }
+      }}
+    ]
+  );
+}
+
+/**
+ * Helper: Escape HTML to prevent XSS
+ */
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }

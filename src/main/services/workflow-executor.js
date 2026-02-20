@@ -193,13 +193,21 @@ class WorkflowExecutor extends EventEmitter {
     let targetX = action.x;
     let targetY = action.y;
 
+    // Bounding box mode: pick a random point within the bounds
+    if (action.moveMode === 'bounds' && action.bounds) {
+      const b = action.bounds;
+      targetX = Math.round(b.x + Math.random() * b.width);
+      targetY = Math.round(b.y + Math.random() * b.height);
+      console.log(`[Executor] Bounds (${b.x}, ${b.y}, ${b.width}x${b.height}) → random point (${targetX}, ${targetY})`);
+    }
+
     if (action.relativeToDetection && this.lastDetection) {
       targetX = this.lastDetection.x + (action.offsetX || 0);
       targetY = this.lastDetection.y + (action.offsetY || 0);
     }
 
-    console.log(`[Executor] Mouse move to (${targetX}, ${targetY})`);
-    await this.mouseController.moveTo(targetX, targetY, { speed: action.speed });
+    console.log(`[Executor] Mouse move to (${targetX}, ${targetY})${action.duration !== undefined ? ` with duration ${action.duration}ms` : ''}`);
+    await this.mouseController.moveTo(targetX, targetY, { duration: action.duration });
     console.log('[Executor] Mouse move complete');
   }
 
@@ -240,7 +248,35 @@ class WorkflowExecutor extends EventEmitter {
         ? randomDelay(action.duration.min, action.duration.max)
         : action.duration;
       console.log(`[Executor] Waiting for ${duration}ms`);
-      await sleep(duration);
+
+      this.emit('wait:start', { duration, action });
+
+      let elapsed = 0;
+      let lastTick = Date.now();
+      const tickInterval = 50;
+      while (true) {
+        if (this.shouldStop) break;
+
+        // If paused, freeze the countdown
+        if (this.isPaused) {
+          this.emit('wait:tick', { duration, remaining: Math.max(0, duration - elapsed), elapsed, paused: true });
+          while (this.isPaused && !this.shouldStop) {
+            await sleep(100);
+          }
+          lastTick = Date.now(); // reset tick clock after unpause
+          if (this.shouldStop) break;
+        }
+
+        const now = Date.now();
+        elapsed += now - lastTick;
+        lastTick = now;
+        const remaining = Math.max(0, duration - elapsed);
+        this.emit('wait:tick', { duration, remaining, elapsed, paused: false });
+        if (remaining <= 0) break;
+        await sleep(Math.min(tickInterval, remaining));
+      }
+
+      this.emit('wait:tick', { duration, remaining: 0, elapsed: duration, paused: false });
       console.log('[Executor] Wait complete');
     } else if (action.waitFor === 'image' && this.detectionService) {
       await this.waitForImage(action);
@@ -260,13 +296,14 @@ class WorkflowExecutor extends EventEmitter {
   }
 
   async performLoop(action) {
-    const iterations = action.count || 1;
+    const infinite = action.infinite === true;
+    const iterations = infinite ? Infinity : (action.count || 1);
 
     for (let i = 0; i < iterations && !this.shouldStop; i++) {
-      this.emit('subloop:iteration', { index: i, total: iterations });
+      this.emit('subloop:iteration', { index: i, total: infinite ? '∞' : iterations });
       await this.executeActions(action.actions);
 
-      if (action.delay && i < iterations - 1) {
+      if (action.delay && !this.shouldStop) {
         const delay = randomDelay(action.delay.min, action.delay.max);
         await sleep(delay);
       }

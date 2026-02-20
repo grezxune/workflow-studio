@@ -108,6 +108,27 @@
             <div class="action-list" id="action-list">
               <!-- Action items will be inserted here -->
             </div>
+            
+            <div class="palette-divider"></div>
+            
+            <div class="templates-section">
+              <div class="templates-header">
+                <h3>Templates</h3>
+                <button class="btn btn-icon btn-sm" id="btn-save-as-template" title="Save selected actions as template">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                    <polyline points="17 21 17 13 7 13 7 21"/>
+                    <polyline points="7 3 7 8 15 8"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="template-list" id="template-list">
+                <!-- Template items will be inserted here -->
+                <div class="empty-templates" id="empty-templates">
+                  <p>No templates yet</p>
+                </div>
+              </div>
+            </div>
           </aside>
 
           <!-- Editor Canvas -->
@@ -117,6 +138,35 @@
                 <input type="text" class="workflow-name-input" id="workflow-name" placeholder="Workflow Name" value="Untitled Workflow">
               </div>
               <div class="toolbar-actions">
+                <button class="btn btn-icon" id="btn-quick-record" title="Quick Record Mode (R)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <circle cx="12" cy="12" r="3" fill="currentColor"/>
+                  </svg>
+                </button>
+                <button class="btn btn-icon" id="btn-preview-overlay" title="Preview Targets Overlay (P)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                </button>
+                <button class="btn btn-icon" id="btn-toggle-view" title="Toggle Compact View (V)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="icon-list-view">
+                    <line x1="8" y1="6" x2="21" y2="6"/>
+                    <line x1="8" y1="12" x2="21" y2="12"/>
+                    <line x1="8" y1="18" x2="21" y2="18"/>
+                    <line x1="3" y1="6" x2="3.01" y2="6"/>
+                    <line x1="3" y1="12" x2="3.01" y2="12"/>
+                    <line x1="3" y1="18" x2="3.01" y2="18"/>
+                  </svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="icon-grid-view" style="display:none">
+                    <rect x="3" y="3" width="7" height="7"/>
+                    <rect x="14" y="3" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/>
+                    <rect x="3" y="14" width="7" height="7"/>
+                  </svg>
+                </button>
+                <div class="toolbar-divider"></div>
                 <button class="btn btn-icon" id="btn-dry-run" title="Dry Run (F9)">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="10"/>
@@ -220,6 +270,11 @@
             <div class="settings-section">
               <h2>Mouse Movement</h2>
               <div class="setting-item">
+                <label>Movement Duration (ms)</label>
+                <input type="number" id="mouse-move-duration" min="0" max="2000" value="250">
+                <p class="setting-hint">How long mouse movements take (0 = instant)</p>
+              </div>
+              <div class="setting-item">
                 <div class="toggle-group">
                   <input type="checkbox" id="click-jitter-enabled" checked>
                   <label for="click-jitter-enabled">Click jitter for natural variation</label>
@@ -290,6 +345,37 @@
           <span id="execution-progress-text">Loop 1/1 - Action 0/0</span>
         </div>
         <p class="execution-action" id="execution-action">Initializing...</p>
+        <div class="wait-countdown hidden" id="wait-countdown">
+          <div class="wait-countdown-bar">
+            <div class="wait-countdown-fill" id="wait-countdown-fill"></div>
+          </div>
+          <div class="wait-countdown-text">
+            <span id="wait-countdown-label">Waiting</span>
+            <span id="wait-countdown-time"></span>
+          </div>
+        </div>
+        <div class="scheduled-stop" id="scheduled-stop">
+          <div class="scheduled-stop-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;flex-shrink:0">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span>Auto-stop at</span>
+          </div>
+          <div class="scheduled-stop-controls" id="scheduled-stop-controls">
+            <input type="time" id="scheduled-stop-time" class="scheduled-stop-input" step="60">
+            <button class="btn btn-sm btn-secondary" id="btn-set-stop-time">Set</button>
+            <button class="btn btn-sm btn-ghost hidden" id="btn-clear-stop-time">Clear</button>
+          </div>
+          <div class="scheduled-stop-active hidden" id="scheduled-stop-active">
+            <div class="scheduled-stop-countdown" id="scheduled-stop-countdown"></div>
+            <button class="btn btn-sm btn-ghost" id="btn-clear-stop-time-active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+        </div>
         <div class="execution-actions">
           <button class="btn btn-secondary" id="btn-pause-execution">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -305,6 +391,15 @@
             Stop (F7)
           </button>
         </div>
+        <button class="btn btn-ghost btn-sm execution-minimize" id="btn-minimize-execution" title="Minimize to floating bar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+            <polyline points="4 14 10 14 10 20"/>
+            <polyline points="20 10 14 10 14 4"/>
+            <line x1="14" y1="10" x2="21" y2="3"/>
+            <line x1="3" y1="21" x2="10" y2="14"/>
+          </svg>
+          Minimize
+        </button>
       </div>
     </div>
 
@@ -338,5 +433,6 @@
   <script src="js/editor.js"></script>
   <script src="js/settings.js"></script>
   <script src="js/execution.js"></script>
+  <script src="js/quick-record.js"></script>
 </body>
 </html>

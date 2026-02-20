@@ -21,6 +21,7 @@ class MouseController {
     this.windMouse = new WindMouse(settings.windMouse || DEFAULT_SETTINGS.windMouse);
     this.clickJitter = new ClickJitter(settings.clickJitter || DEFAULT_SETTINGS.clickJitter);
     this.overshootConfig = settings.overshoot || DEFAULT_SETTINGS.overshoot;
+    this.mouseMoveDuration = settings.mouseMoveDuration ?? DEFAULT_SETTINGS.mouseMoveDuration ?? 250;
 
     mouse.config.autoDelayMs = 0;
     mouse.config.mouseSpeed = 1000;
@@ -50,22 +51,75 @@ class MouseController {
   }
 
   async moveDirectly(startX, startY, endX, endY, options = {}) {
-    console.log(`[MouseController] moveDirectly from (${startX}, ${startY}) to (${endX}, ${endY})`);
+    const targetDuration = options.duration ?? this.mouseMoveDuration;
+    console.log(`[MouseController] moveDirectly from (${startX}, ${startY}) to (${endX}, ${endY}), targetDuration=${targetDuration}ms, mouseMoveDuration=${this.mouseMoveDuration}ms`);
     try {
-      const path = this.windMouse.generatePath(startX, startY, endX, endY);
-      console.log(`[MouseController] Generated path with ${path.length} points`);
+      const startTime = Date.now();
+      let path = this.windMouse.generatePath(startX, startY, endX, endY);
+      console.log(`[MouseController] Generated path: ${path.length} points`);
 
-      for (const point of path) {
+      // Estimate ~3ms overhead per setPosition call
+      const SET_POS_OVERHEAD_MS = 3;
+      const overheadTotal = path.length * SET_POS_OVERHEAD_MS;
+
+      // If overhead alone would exceed target duration, subsample the path
+      if (overheadTotal > targetDuration * 0.8 && path.length > 5) {
+        const maxPoints = Math.max(5, Math.floor(targetDuration * 0.6 / SET_POS_OVERHEAD_MS));
+        path = this.subsamplePath(path, maxPoints);
+        console.log(`[MouseController] Subsampled to ${path.length} points (overhead budget: ${targetDuration * 0.8}ms)`);
+      }
+
+      // Scale delays: subtract estimated overhead from target so total time is correct
+      const estimatedOverhead = path.length * SET_POS_OVERHEAD_MS;
+      const sleepBudget = Math.max(0, targetDuration - estimatedOverhead);
+      const scaledPath = this.scalePathDuration(path, sleepBudget);
+
+      for (const point of scaledPath) {
         await mouse.setPosition(new Point(point.x, point.y));
         if (point.delay > 0) {
           await sleep(point.delay);
         }
       }
-      console.log('[MouseController] moveDirectly complete');
+      const elapsed = Date.now() - startTime;
+      console.log(`[MouseController] moveDirectly complete in ${elapsed}ms (target was ${targetDuration}ms)`);
     } catch (error) {
       console.error('[MouseController] moveDirectly error:', error);
       throw error;
     }
+  }
+
+  /**
+   * Subsample a path to a maximum number of points while keeping start and end
+   */
+  subsamplePath(path, maxPoints) {
+    if (path.length <= maxPoints) return path;
+    const result = [];
+    const step = (path.length - 1) / (maxPoints - 1);
+    for (let i = 0; i < maxPoints - 1; i++) {
+      result.push(path[Math.round(i * step)]);
+    }
+    result.push(path[path.length - 1]); // always include final point
+    return result;
+  }
+
+  /**
+   * Scale path delays to achieve a target total duration
+   */
+  scalePathDuration(path, targetDuration) {
+    if (targetDuration <= 0 || path.length === 0) {
+      // Instant movement - no delays
+      return path.map(p => ({ ...p, delay: 0 }));
+    }
+
+    const currentTotal = path.reduce((sum, p) => sum + p.delay, 0);
+    if (currentTotal === 0) {
+      // Distribute duration evenly if no existing delays
+      const delayPerPoint = Math.round(targetDuration / path.length);
+      return path.map(p => ({ ...p, delay: delayPerPoint }));
+    }
+
+    const scale = targetDuration / currentTotal;
+    return path.map(p => ({ ...p, delay: Math.round(p.delay * scale) }));
   }
 
   async moveWithOvershoot(startX, startY, endX, endY, options = {}) {
@@ -76,18 +130,28 @@ class MouseController {
     const overshootX = Math.round(endX + Math.cos(angle) * overshootDist);
     const overshootY = Math.round(endY + Math.sin(angle) * overshootDist);
 
-    await this.moveDirectly(startX, startY, overshootX, overshootY, options);
+    // Use 80% of duration for main movement, 20% for correction
+    const mainDuration = Math.round((options.duration ?? this.mouseMoveDuration) * 0.8);
+    const correctionDuration = Math.round((options.duration ?? this.mouseMoveDuration) * 0.2);
+
+    await this.moveDirectly(startX, startY, overshootX, overshootY, { ...options, duration: mainDuration });
 
     const pauseMs = pauseBeforeCorrection(this.overshootConfig);
     await sleep(pauseMs);
 
-    const correctionPath = this.windMouse.generatePath(overshootX, overshootY, endX, endY);
-    const slowedPath = correctionPath.map(point => ({
-      ...point,
-      delay: Math.round(point.delay * 1.5)
-    }));
+    let correctionPath = this.windMouse.generatePath(overshootX, overshootY, endX, endY);
 
-    for (const point of slowedPath) {
+    // Apply same overhead-aware logic as moveDirectly
+    const SET_POS_OVERHEAD_MS = 3;
+    const corrOverhead = correctionPath.length * SET_POS_OVERHEAD_MS;
+    if (corrOverhead > correctionDuration * 0.8 && correctionPath.length > 5) {
+      const maxPts = Math.max(5, Math.floor(correctionDuration * 0.6 / SET_POS_OVERHEAD_MS));
+      correctionPath = this.subsamplePath(correctionPath, maxPts);
+    }
+    const corrSleepBudget = Math.max(0, correctionDuration - correctionPath.length * SET_POS_OVERHEAD_MS);
+    const scaledCorrectionPath = this.scalePathDuration(correctionPath, corrSleepBudget);
+
+    for (const point of scaledCorrectionPath) {
       await mouse.setPosition(new Point(point.x, point.y));
       if (point.delay > 0) {
         await sleep(point.delay);
@@ -170,6 +234,10 @@ class MouseController {
   }
 
   updateSettings(settings) {
+    if (settings.mouseMoveDuration !== undefined) {
+      console.log(`[MouseController] updateSettings: mouseMoveDuration ${this.mouseMoveDuration}ms → ${settings.mouseMoveDuration}ms`);
+      this.mouseMoveDuration = settings.mouseMoveDuration;
+    }
     if (settings.windMouse) {
       this.windMouse.setParams(settings.windMouse);
     }

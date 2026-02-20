@@ -13,6 +13,7 @@ let jitterRadiusValue = null;
 let overshootCheckbox = null;
 let typingSpeedMinInput = null;
 let typingSpeedMaxInput = null;
+let mouseMoveDurationInput = null;
 
 /**
  * Initialize settings view
@@ -27,6 +28,7 @@ function initSettingsView() {
   overshootCheckbox = document.getElementById('overshoot-enabled');
   typingSpeedMinInput = document.getElementById('typing-speed-min');
   typingSpeedMaxInput = document.getElementById('typing-speed-max');
+  mouseMoveDurationInput = document.getElementById('mouse-move-duration');
 
   // Setup event listeners
   setupSettingsEvents();
@@ -88,6 +90,12 @@ function setupSettingsEvents() {
     state.settings.typingSpeed.max = parseInt(typingSpeedMaxInput.value) || 150;
     await saveSettings({ typingSpeed: state.settings.typingSpeed });
   });
+
+  // Mouse movement duration
+  mouseMoveDurationInput.addEventListener('change', async () => {
+    state.settings.mouseMoveDuration = parseInt(mouseMoveDurationInput.value) || 250;
+    await saveSettings({ mouseMoveDuration: state.settings.mouseMoveDuration });
+  });
 }
 
 /**
@@ -118,6 +126,9 @@ async function loadSettingsIntoUI() {
   const typing = state.settings.typingSpeed || {};
   typingSpeedMinInput.value = typing.min || 50;
   typingSpeedMaxInput.value = typing.max || 150;
+
+  // Mouse movement duration
+  mouseMoveDurationInput.value = state.settings.mouseMoveDuration ?? 250;
 
   // Load image gallery
   loadImageGallery();

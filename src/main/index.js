@@ -13,6 +13,12 @@ import { initRegionSelectorIPC } from './services/region-selector.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Enable high DPI support for multi-monitor setups with different scaling (Windows)
+if (process.platform === 'win32') {
+  app.commandLine.appendSwitch('high-dpi-support', '1');
+  app.commandLine.appendSwitch('force-device-scale-factor', '1');
+}
+
 // Set app name early (before app ready) for macOS menu bar
 if (process.platform === 'darwin') {
   app.setName('Workflow Studio');

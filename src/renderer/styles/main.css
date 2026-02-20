@@ -349,6 +349,8 @@ body {
 .settings-layout {
   padding: var(--space-8);
   max-width: 1400px;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .settings-layout h1 {

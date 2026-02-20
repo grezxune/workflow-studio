@@ -39,6 +39,11 @@ async function initApp() {
   initWorkflowsView();
   initEditorView();
   initSettingsView();
+  
+  // Initialize quick record mode
+  if (window.quickRecord) {
+    window.quickRecord.init();
+  }
 
   // Setup event listeners from main process
   setupIPCListeners();

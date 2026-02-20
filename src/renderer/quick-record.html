@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Quick Record</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+      cursor: crosshair;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    
+    .overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.1);
+    }
+    
+    .control-panel {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(30, 30, 30, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 12px;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      z-index: 10000;
+      user-select: none;
+      -webkit-app-region: no-drag;
+    }
+    
+    .control-panel h3 {
+      color: #ff4444;
+      font-size: 14px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .record-dot {
+      width: 10px;
+      height: 10px;
+      background: #ff4444;
+      border-radius: 50%;
+      animation: pulse 1s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.9); }
+    }
+    
+    .sequence-builder {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      position: relative;
+    }
+    
+    .sequence-label {
+      color: #888;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    
+    .sequence-chips {
+      display: flex;
+      gap: 4px;
+      padding: 4px 8px;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 6px;
+      min-width: 80px;
+    }
+    
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .chip:hover {
+      transform: scale(1.05);
+    }
+    
+    .chip-move { background: rgba(59, 130, 246, 0.8); color: #fff; }
+    .chip-click { background: rgba(34, 197, 94, 0.8); color: #fff; }
+    .chip-delay { background: rgba(251, 191, 36, 0.8); color: #000; }
+    .chip-double { background: rgba(168, 85, 247, 0.8); color: #fff; }
+    .chip-right { background: rgba(239, 68, 68, 0.8); color: #fff; }
+    
+    .chip::after {
+      content: '×';
+      margin-left: 4px;
+      opacity: 0.6;
+      font-size: 10px;
+    }
+    
+    .chip.dragging {
+      opacity: 0.5;
+      cursor: grabbing;
+    }
+    
+    .chip.drag-over {
+      transform: scale(1.1);
+      box-shadow: 0 0 0 2px #fff;
+    }
+    
+    .chip:not(.dragging) {
+      cursor: grab;
+    }
+    
+    .add-action-btn {
+      width: 24px;
+      height: 24px;
+      border: 1px dashed rgba(255, 255, 255, 0.3);
+      background: transparent;
+      color: #888;
+      border-radius: 4px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .add-action-btn:hover {
+      border-color: #3b82f6;
+      color: #3b82f6;
+    }
+    
+    .action-menu {
+      position: absolute;
+      top: 100%;
+      left: 50px;
+      margin-top: 8px;
+      background: rgba(40, 40, 40, 0.98);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 4px;
+      z-index: 100;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+    
+    .action-menu button {
+      display: block;
+      width: 100%;
+      padding: 8px 12px;
+      border: none;
+      background: transparent;
+      color: #ccc;
+      font-size: 12px;
+      text-align: left;
+      cursor: pointer;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+    
+    .action-menu button:hover {
+      background: rgba(59, 130, 246, 0.3);
+      color: #fff;
+    }
+    
+    .presets {
+      display: flex;
+      gap: 4px;
+      padding-left: 8px;
+      border-left: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .preset-btn {
+      padding: 4px 8px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: transparent;
+      color: #888;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    
+    .preset-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+    
+    .preset-btn.active {
+      background: #3b82f6;
+      border-color: #3b82f6;
+      color: #fff;
+    }
+    
+    .stats {
+      color: #888;
+      font-size: 12px;
+      padding-left: 12px;
+      border-left: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .stats span {
+      color: #fff;
+      font-weight: 600;
+    }
+    
+    .stop-btn {
+      padding: 6px 16px;
+      background: #ef4444;
+      border: none;
+      color: white;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    
+    .stop-btn:hover {
+      background: #dc2626;
+    }
+    
+    .cursor-info {
+      position: fixed;
+      padding: 4px 8px;
+      background: rgba(0, 0, 0, 0.8);
+      color: #fff;
+      font-size: 11px;
+      border-radius: 4px;
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 10001;
+    }
+    
+    .click-feedback {
+      position: fixed;
+      width: 30px;
+      height: 30px;
+      border: 2px solid #3b82f6;
+      border-radius: 50%;
+      pointer-events: none;
+      animation: click-ripple 0.4s ease-out forwards;
+      z-index: 9999;
+    }
+    
+    @keyframes click-ripple {
+      0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
+    }
+    
+    .help-text {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(30, 30, 30, 0.9);
+      color: #888;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 12px;
+    }
+    
+    .help-text kbd {
+      display: inline-block;
+      padding: 2px 6px;
+      margin: 0 2px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <div class="overlay" id="overlay"></div>
+  
+  <div class="control-panel">
+    <h3><span class="record-dot"></span> Recording</h3>
+    
+    <div class="sequence-builder">
+      <div class="sequence-label">Per click:</div>
+      <div class="sequence-chips" id="sequence-chips">
+        <span class="chip chip-move" data-action="move">Move</span>
+        <span class="chip chip-click" data-action="click">Click</span>
+      </div>
+      <button class="add-action-btn" id="btn-add-action" title="Add action to sequence">+</button>
+      <div class="action-menu" id="action-menu" style="display:none">
+        <button data-add="move">Mouse Move</button>
+        <button data-add="click">Mouse Click</button>
+        <button data-add="delay">Delay (100ms)</button>
+        <button data-add="double">Double Click</button>
+        <button data-add="right">Right Click</button>
+      </div>
+    </div>
+    
+    <div class="presets">
+      <button class="preset-btn" data-preset="move" title="Move only">M</button>
+      <button class="preset-btn" data-preset="click" title="Click only">C</button>
+      <button class="preset-btn active" data-preset="move+click" title="Move + Click">M+C</button>
+      <button class="preset-btn" data-preset="move+delay+click" title="Move + Delay + Click">M+D+C</button>
+    </div>
+    
+    <div class="stats">
+      Added: <span id="action-count">0</span>
+    </div>
+    
+    <button class="stop-btn" id="btn-stop">Stop <kbd>ESC</kbd></button>
+  </div>
+  
+  <div class="cursor-info" id="cursor-info" style="display: none;"></div>
+  
+  <div class="help-text">
+    <kbd>Click</kbd> to add action • <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> change mode • <kbd>ESC</kbd> to stop
+  </div>
+  
+  <script>
+    const { ipcRenderer } = require('electron');
+    
+    // Action sequence to add per click
+    let actionSequence = ['move', 'click'];
+    let actionCount = 0;
+    let offset = { x: 0, y: 0 };
+    
+    const overlay = document.getElementById('overlay');
+    const cursorInfo = document.getElementById('cursor-info');
+    const actionCountEl = document.getElementById('action-count');
+    const sequenceChips = document.getElementById('sequence-chips');
+    const actionMenu = document.getElementById('action-menu');
+    const presetButtons = document.querySelectorAll('.preset-btn');
+    
+    // Preset definitions
+    const presets = {
+      'move': ['move'],
+      'click': ['click'],
+      'move+click': ['move', 'click'],
+      'move+delay+click': ['move', 'delay', 'click']
+    };
+    
+    // Action display names
+    const actionNames = {
+      'move': 'Move',
+      'click': 'Click',
+      'delay': 'Delay',
+      'double': 'DblClick',
+      'right': 'RClick'
+    };
+    
+    // Initialize
+    ipcRenderer.on('quick-record:init', (event, data) => {
+      offset = data.offset || { x: 0, y: 0 };
+      if (data.sequence) {
+        actionSequence = data.sequence;
+      }
+      renderChips();
+      updatePresetUI();
+    });
+    
+    // Drag state
+    let draggedChipIndex = null;
+    
+    // Render action chips
+    function renderChips() {
+      sequenceChips.innerHTML = actionSequence.map((action, i) => 
+        `<span class="chip chip-${action}" data-action="${action}" data-index="${i}" draggable="true">${actionNames[action] || action}</span>`
+      ).join('');
+      
+      // Add event handlers to chips
+      sequenceChips.querySelectorAll('.chip').forEach(chip => {
+        // Click to remove
+        chip.addEventListener('click', (e) => {
+          if (e.detail === 1) {
+            // Single click - use timeout to allow double-click detection
+            chip._clickTimeout = setTimeout(() => {
+              e.stopPropagation();
+              const index = parseInt(chip.dataset.index);
+              actionSequence.splice(index, 1);
+              renderChips();
+              updatePresetUI();
+              sendSequenceUpdate();
+            }, 200);
+          }
+        });
+        
+        // Drag start
+        chip.addEventListener('dragstart', (e) => {
+          clearTimeout(chip._clickTimeout);
+          e.stopPropagation();
+          draggedChipIndex = parseInt(chip.dataset.index);
+          chip.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+        });
+        
+        // Drag end
+        chip.addEventListener('dragend', (e) => {
+          e.stopPropagation();
+          chip.classList.remove('dragging');
+          draggedChipIndex = null;
+          document.querySelectorAll('.chip.drag-over').forEach(c => c.classList.remove('drag-over'));
+        });
+        
+        // Drag over
+        chip.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (draggedChipIndex !== null && parseInt(chip.dataset.index) !== draggedChipIndex) {
+            chip.classList.add('drag-over');
+          }
+        });
+        
+        // Drag leave
+        chip.addEventListener('dragleave', (e) => {
+          e.stopPropagation();
+          chip.classList.remove('drag-over');
+        });
+        
+        // Drop
+        chip.addEventListener('drop', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          chip.classList.remove('drag-over');
+          
+          if (draggedChipIndex === null) return;
+          
+          const toIndex = parseInt(chip.dataset.index);
+          if (draggedChipIndex === toIndex) return;
+          
+          // Reorder the array
+          const [removed] = actionSequence.splice(draggedChipIndex, 1);
+          actionSequence.splice(toIndex, 0, removed);
+          
+          draggedChipIndex = null;
+          renderChips();
+          updatePresetUI();
+          sendSequenceUpdate();
+        });
+      });
+    }
+    
+    // Update preset button UI
+    function updatePresetUI() {
+      const currentPreset = Object.entries(presets).find(([key, seq]) => 
+        seq.length === actionSequence.length && seq.every((a, i) => a === actionSequence[i])
+      );
+      
+      presetButtons.forEach(btn => {
+        btn.classList.toggle('active', currentPreset && btn.dataset.preset === currentPreset[0]);
+      });
+    }
+    
+    // Send sequence update to main process
+    function sendSequenceUpdate() {
+      ipcRenderer.send('quick-record:sequence-change', actionSequence);
+    }
+    
+    // Preset button clicks
+    presetButtons.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const preset = btn.dataset.preset;
+        if (presets[preset]) {
+          actionSequence = [...presets[preset]];
+          renderChips();
+          updatePresetUI();
+          sendSequenceUpdate();
+        }
+      });
+    });
+    
+    // Add action button
+    document.getElementById('btn-add-action').addEventListener('click', (e) => {
+      e.stopPropagation();
+      actionMenu.style.display = actionMenu.style.display === 'none' ? 'block' : 'none';
+    });
+    
+    // Action menu items
+    actionMenu.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const action = btn.dataset.add;
+        actionSequence.push(action);
+        renderChips();
+        updatePresetUI();
+        sendSequenceUpdate();
+        actionMenu.style.display = 'none';
+      });
+    });
+    
+    // Close menu when clicking elsewhere
+    document.addEventListener('click', () => {
+      actionMenu.style.display = 'none';
+    });
+    
+    // Stop button
+    document.getElementById('btn-stop').addEventListener('click', (e) => {
+      e.stopPropagation();
+      ipcRenderer.send('quick-record:stop');
+    });
+    
+    // Track mouse position
+    document.addEventListener('mousemove', (e) => {
+      const x = e.clientX + offset.x;
+      const y = e.clientY + offset.y;
+      
+      cursorInfo.style.display = 'block';
+      cursorInfo.style.left = (e.clientX + 15) + 'px';
+      cursorInfo.style.top = (e.clientY + 15) + 'px';
+      cursorInfo.textContent = `${x}, ${y}`;
+    });
+    
+    // Capture clicks on overlay
+    overlay.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Send position and sequence to main process
+      ipcRenderer.send('quick-record:position', {
+        x: e.clientX,
+        y: e.clientY,
+        sequence: actionSequence
+      });
+      
+      // Visual feedback
+      showClickFeedback(e.clientX, e.clientY);
+      
+      // Update count based on sequence length
+      actionCount += actionSequence.length;
+      actionCountEl.textContent = actionCount;
+    });
+    
+    // Show click feedback animation
+    function showClickFeedback(x, y) {
+      const feedback = document.createElement('div');
+      feedback.className = 'click-feedback';
+      feedback.style.left = x + 'px';
+      feedback.style.top = y + 'px';
+      document.body.appendChild(feedback);
+      
+      setTimeout(() => feedback.remove(), 400);
+    }
+    
+    // Keyboard shortcuts for presets
+    document.addEventListener('keydown', (e) => {
+      switch (e.key) {
+        case 'Escape':
+          ipcRenderer.send('quick-record:stop');
+          break;
+        case '1':
+          actionSequence = [...presets['move']];
+          renderChips();
+          updatePresetUI();
+          sendSequenceUpdate();
+          break;
+        case '2':
+          actionSequence = [...presets['click']];
+          renderChips();
+          updatePresetUI();
+          sendSequenceUpdate();
+          break;
+        case '3':
+          actionSequence = [...presets['move+click']];
+          renderChips();
+          updatePresetUI();
+          sendSequenceUpdate();
+          break;
+        case '4':
+          actionSequence = [...presets['move+delay+click']];
+          renderChips();
+          updatePresetUI();
+          sendSequenceUpdate();
+          break;
+      }
+    });
+    
+    // Prevent context menu
+    document.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+    });
+  </script>
+</body>
+</html>

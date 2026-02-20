@@ -74,7 +74,15 @@ const IPC_CHANNELS = {
   GET_MOUSE_POSITION: 'util:get-mouse-pos',
   MINIMIZE_WINDOW: 'window:minimize',
   MAXIMIZE_WINDOW: 'window:maximize',
-  CLOSE_WINDOW: 'window:close'
+  CLOSE_WINDOW: 'window:close',
+
+  // Templates
+  GET_TEMPLATES: 'template:get-all',
+  GET_TEMPLATE: 'template:get',
+  CREATE_TEMPLATE: 'template:create',
+  UPDATE_TEMPLATE: 'template:update',
+  DELETE_TEMPLATE: 'template:delete',
+  DUPLICATE_TEMPLATE: 'template:duplicate'
 };
 
 // Allowed channels for receiving events
@@ -91,7 +99,10 @@ const validReceiveChannels = [
   IPC_CHANNELS.ACTION_ERROR,
   IPC_CHANNELS.LOOP_STARTED,
   IPC_CHANNELS.LOOP_COMPLETED,
-  IPC_CHANNELS.PANIC_TRIGGERED
+  IPC_CHANNELS.PANIC_TRIGGERED,
+  'floating-bar:pause-clicked',
+  'floating-bar:stop-clicked',
+  'floating-bar:expand-clicked'
 ];
 
 /**
@@ -223,6 +234,60 @@ contextBridge.exposeInMainWorld('workflowAPI', {
   triggerPanic: () =>
     ipcRenderer.invoke(IPC_CHANNELS.TRIGGER_PANIC),
 
+  // ==================== TEMPLATES ====================
+
+  getTemplates: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_TEMPLATES),
+
+  getTemplate: (id) =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_TEMPLATE, id),
+
+  createTemplate: (data) =>
+    ipcRenderer.invoke(IPC_CHANNELS.CREATE_TEMPLATE, data),
+
+  updateTemplate: (id, updates) =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPDATE_TEMPLATE, { id, updates }),
+
+  deleteTemplate: (id) =>
+    ipcRenderer.invoke(IPC_CHANNELS.DELETE_TEMPLATE, id),
+
+  duplicateTemplate: (id) =>
+    ipcRenderer.invoke(IPC_CHANNELS.DUPLICATE_TEMPLATE, id),
+
+  // ==================== QUICK RECORD ====================
+
+  startQuickRecord: (options) =>
+    ipcRenderer.invoke('quick-record:start', options),
+
+  stopQuickRecord: () =>
+    ipcRenderer.invoke('quick-record:stop'),
+
+  updateQuickRecordMode: (mode) =>
+    ipcRenderer.invoke('quick-record:update-mode', mode),
+
+  onQuickRecordPosition: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('quick-record:position-captured', subscription);
+    return () => ipcRenderer.removeListener('quick-record:position-captured', subscription);
+  },
+
+  // ==================== WORKFLOW PREVIEW ====================
+
+  showWorkflowPreview: (workflow) =>
+    ipcRenderer.invoke('workflow-preview:show', workflow),
+
+  closeWorkflowPreview: () =>
+    ipcRenderer.invoke('workflow-preview:close'),
+
+  isWorkflowPreviewOpen: () =>
+    ipcRenderer.invoke('workflow-preview:is-open'),
+
+  onWorkflowPreviewClosed: (callback) => {
+    const subscription = (event) => callback();
+    ipcRenderer.on('workflow-preview:closed', subscription);
+    return () => ipcRenderer.removeListener('workflow-preview:closed', subscription);
+  },
+
   // ==================== UTILITIES ====================
 
   getMousePosition: () =>
@@ -301,6 +366,18 @@ contextBridge.exposeInMainWorld('workflowAPI', {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.ACTION_ERROR, subscription);
   },
 
+  onWaitStart: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('wait:start', subscription);
+    return () => ipcRenderer.removeListener('wait:start', subscription);
+  },
+
+  onWaitTick: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('wait:tick', subscription);
+    return () => ipcRenderer.removeListener('wait:tick', subscription);
+  },
+
   onLoopStarted: (callback) => {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on(IPC_CHANNELS.LOOP_STARTED, subscription);
@@ -323,6 +400,32 @@ contextBridge.exposeInMainWorld('workflowAPI', {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on(IPC_CHANNELS.PANIC_TRIGGERED, subscription);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.PANIC_TRIGGERED, subscription);
+  },
+
+  // Floating bar
+  showFloatingBar: () => ipcRenderer.invoke('floating-bar:show'),
+  hideFloatingBar: () => ipcRenderer.invoke('floating-bar:hide'),
+  closeFloatingBar: () => ipcRenderer.invoke('floating-bar:close'),
+  updateFloatingBarPause: (paused) => ipcRenderer.invoke('floating-bar:update-pause', paused),
+  updateFloatingBarStopTimer: (data) => ipcRenderer.invoke('floating-bar:update-stop-timer', data),
+  syncFloatingBarWait: (data) => ipcRenderer.invoke('floating-bar:sync-wait', data),
+
+  onFloatingBarPauseClicked: (callback) => {
+    const subscription = (event) => callback();
+    ipcRenderer.on('floating-bar:pause-clicked', subscription);
+    return () => ipcRenderer.removeListener('floating-bar:pause-clicked', subscription);
+  },
+
+  onFloatingBarStopClicked: (callback) => {
+    const subscription = (event) => callback();
+    ipcRenderer.on('floating-bar:stop-clicked', subscription);
+    return () => ipcRenderer.removeListener('floating-bar:stop-clicked', subscription);
+  },
+
+  onFloatingBarExpandClicked: (callback) => {
+    const subscription = (event) => callback();
+    ipcRenderer.on('floating-bar:expand-clicked', subscription);
+    return () => ipcRenderer.removeListener('floating-bar:expand-clicked', subscription);
   },
 
   // Remove all listeners
