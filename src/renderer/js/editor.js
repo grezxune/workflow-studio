@@ -2156,17 +2156,19 @@ function openNestedActionConfig(action, nestedIndex, parentAction, actionsKey, p
  * Update the action counts displayed in the config panel for conditionals/loops
  */
 function updateNestedActionCounts(parentAction, actionsKey) {
-  // Update conditional counts
-  if (actionsKey === 'thenActions') {
-    const el = document.getElementById('then-actions-count');
-    if (el) el.textContent = (parentAction.thenActions || []).length;
-  } else if (actionsKey === 'elseActions') {
-    const el = document.getElementById('else-actions-count');
-    if (el) el.textContent = (parentAction.elseActions || []).length;
-  } else if (actionsKey === 'actions') {
-    // Loop actions
-    const el = document.getElementById('loop-actions-count');
-    if (el) el.textContent = (parentAction.actions || []).length;
+  const count = (parentAction[actionsKey] || []).length;
+
+  // Map of actionsKey → possible element IDs that display the count
+  const countElementIds = {
+    thenActions: ['then-actions-count'],
+    elseActions: ['else-actions-count'],
+    actions: ['loop-actions-count', 'hold-actions-count']
+  };
+
+  const ids = countElementIds[actionsKey] || [];
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = count;
   }
 }
 
