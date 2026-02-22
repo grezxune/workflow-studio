@@ -53,6 +53,33 @@
       </div>
     </header>
 
+    <!-- Update Banner -->
+    <div class="update-banner hidden" id="update-banner">
+      <div class="update-banner-content">
+        <div class="update-banner-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+        </div>
+        <div class="update-banner-text">
+          <span class="update-banner-title" id="update-banner-title">A new version is available</span>
+          <span class="update-banner-subtitle" id="update-banner-subtitle">Downloading update...</span>
+        </div>
+      </div>
+      <div class="update-banner-actions">
+        <button class="btn btn-sm btn-ghost" id="update-banner-dismiss">Later</button>
+        <button class="btn btn-sm btn-primary hidden" id="update-banner-restart">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+          Restart to Update
+        </button>
+      </div>
+    </div>
+
     <!-- Main Content -->
     <main class="main-content" id="main-content">
       <!-- Workflows View -->

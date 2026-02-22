@@ -25,11 +25,19 @@
     "better-sqlite3": "^11.0.0",
     "electron-squirrel-startup": "^1.0.1",
     "electron-store": "^11.0.2",
+    "electron-updater": "^6.8.3",
     "uuid": "^9.0.1"
   },
   "build": {
     "appId": "com.grezstudios.workflowstudio",
     "productName": "Workflow Studio",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "grezxune",
+        "repo": "workflow-studio"
+      }
+    ],
     "files": [
       "src/**/*"
     ],
@@ -43,7 +51,10 @@
       "icon": "assets/icon.icns"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "icon": "assets/icon.png",
       "category": "Utility"
     },

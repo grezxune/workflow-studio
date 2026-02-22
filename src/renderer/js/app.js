@@ -251,6 +251,9 @@ function setupIPCListeners() {
 
   // Setup keyboard shortcuts for workflow hotkeys
   setupWorkflowHotkeyListeners();
+
+  // Auto-update events
+  setupUpdateListeners();
 }
 
 /**
@@ -423,6 +426,50 @@ function formatDate(dateString) {
  */
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).substr(2);
+}
+
+/**
+ * Setup auto-update event listeners and banner controls
+ */
+function setupUpdateListeners() {
+  const banner = document.getElementById('update-banner');
+  const title = document.getElementById('update-banner-title');
+  const subtitle = document.getElementById('update-banner-subtitle');
+  const restartBtn = document.getElementById('update-banner-restart');
+  const dismissBtn = document.getElementById('update-banner-dismiss');
+
+  if (!banner) return;
+
+  window.workflowAPI.onUpdateAvailable((data) => {
+    title.textContent = `Update v${data.version} available`;
+    subtitle.textContent = 'Downloading in the background...';
+    restartBtn.classList.add('hidden');
+    banner.classList.remove('hidden');
+  });
+
+  window.workflowAPI.onUpdateDownloadProgress((data) => {
+    subtitle.textContent = `Downloading update... ${data.percent}%`;
+  });
+
+  window.workflowAPI.onUpdateDownloaded((data) => {
+    title.textContent = `v${data.version} ready to install`;
+    subtitle.textContent = 'Restart the app to apply the update';
+    restartBtn.classList.remove('hidden');
+    banner.classList.remove('hidden');
+  });
+
+  window.workflowAPI.onUpdateError((data) => {
+    console.warn('[Update] Error:', data.message);
+    banner.classList.add('hidden');
+  });
+
+  restartBtn.addEventListener('click', () => {
+    window.workflowAPI.restartToUpdate();
+  });
+
+  dismissBtn.addEventListener('click', () => {
+    banner.classList.add('hidden');
+  });
 }
 
 // Initialize on load

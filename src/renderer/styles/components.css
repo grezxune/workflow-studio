@@ -1932,3 +1932,81 @@ input[type="color"]::-webkit-color-swatch {
 .multi-select-toolbar .btn:hover {
   background: rgba(255, 255, 255, 0.3);
 }
+
+/* Update Banner */
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-4);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(59, 130, 246, 0.12));
+  border-bottom: 1px solid rgba(6, 182, 212, 0.25);
+  flex-shrink: 0;
+  animation: bannerSlideIn 0.3s ease;
+}
+
+@keyframes bannerSlideIn {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.update-banner-content {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.update-banner-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 182, 212, 0.15);
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.update-banner-icon svg {
+  width: 16px;
+  height: 16px;
+  color: var(--color-primary-400);
+}
+
+.update-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.update-banner-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.update-banner-subtitle {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.update-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.update-banner-actions .btn-primary {
+  animation: subtlePulse 2s ease-in-out infinite;
+}
+
+@keyframes subtlePulse {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.2); }
+}

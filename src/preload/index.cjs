@@ -102,7 +102,13 @@ const validReceiveChannels = [
   IPC_CHANNELS.PANIC_TRIGGERED,
   'floating-bar:pause-clicked',
   'floating-bar:stop-clicked',
-  'floating-bar:expand-clicked'
+  'floating-bar:expand-clicked',
+  'update:checking',
+  'update:available',
+  'update:not-available',
+  'update:download-progress',
+  'update:downloaded',
+  'update:error'
 ];
 
 /**
@@ -426,6 +432,35 @@ contextBridge.exposeInMainWorld('workflowAPI', {
     const subscription = (event) => callback();
     ipcRenderer.on('floating-bar:expand-clicked', subscription);
     return () => ipcRenderer.removeListener('floating-bar:expand-clicked', subscription);
+  },
+
+  // ==================== AUTO-UPDATE ====================
+
+  checkForUpdates: () => ipcRenderer.invoke('update:check'),
+  restartToUpdate: () => ipcRenderer.invoke('update:restart'),
+
+  onUpdateAvailable: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('update:available', subscription);
+    return () => ipcRenderer.removeListener('update:available', subscription);
+  },
+
+  onUpdateDownloadProgress: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('update:download-progress', subscription);
+    return () => ipcRenderer.removeListener('update:download-progress', subscription);
+  },
+
+  onUpdateDownloaded: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('update:downloaded', subscription);
+    return () => ipcRenderer.removeListener('update:downloaded', subscription);
+  },
+
+  onUpdateError: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('update:error', subscription);
+    return () => ipcRenderer.removeListener('update:error', subscription);
   },
 
   // Remove all listeners

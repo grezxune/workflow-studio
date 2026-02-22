@@ -9,6 +9,7 @@ import { initializeIPC, cleanupIPC } from './ipc/index.js';
 import { getSafetyService } from './services/safety.js';
 import { getStorageService } from './services/storage.js';
 import { initRegionSelectorIPC } from './services/region-selector.js';
+import { initAutoUpdater } from './services/auto-updater.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -335,6 +336,7 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
   initRegionSelectorIPC();
+  initAutoUpdater(mainWindow);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
