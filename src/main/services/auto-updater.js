@@ -5,7 +5,8 @@
  * and notifies the renderer to show a "Restart to apply update" prompt.
  */
 
-import { autoUpdater } from 'electron-updater';
+import pkg from 'electron-updater';
+const { autoUpdater } = pkg;
 import { ipcMain } from 'electron';
 
 let mainWindow = null;
