@@ -1,6 +1,6 @@
 {
   "name": "workflow-studio",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Premium workflow automation tool for gamers - automate repetitive tasks with human-like behavior",
   "type": "module",
   "main": "src/main/index.js",
@@ -41,6 +41,12 @@
     "files": [
       "src/**/*"
     ],
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": false,
+      "include": "installer/installer.nsh"
+    },
     "win": {
       "target": "nsis",
       "icon": "assets/icon.ico",
