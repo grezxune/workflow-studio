@@ -423,222 +423,246 @@ function createSequenceItem(action, index) {
     editorState.draggedAction = null;
   });
 
-  // Inline nested children for loop/conditional
-  if (action.type === 'loop' || action.type === 'conditional') {
-    const childrenContainer = document.createElement('div');
-    childrenContainer.className = 'inline-children';
-    
-    const branches = [];
-    if (action.type === 'loop') {
-      branches.push({ key: 'actions', label: 'Loop Actions', actions: action.actions || [] });
-    } else {
-      branches.push({ key: 'thenActions', label: 'Then', actions: action.thenActions || [] });
-      branches.push({ key: 'elseActions', label: 'Else', actions: action.elseActions || [] });
-    }
-
-    branches.forEach(branch => {
-      const branchEl = document.createElement('div');
-      branchEl.className = 'inline-branch';
-      
-      const header = document.createElement('div');
-      header.className = 'inline-branch-header';
-      header.innerHTML = `
-        <span class="inline-branch-label">${branch.label}</span>
-        <span class="inline-branch-count">${branch.actions.length} action${branch.actions.length !== 1 ? 's' : ''}</span>
-      `;
-      branchEl.appendChild(header);
-
-      const listEl = document.createElement('div');
-      listEl.className = 'inline-branch-list';
-      listEl.dataset.parentIndex = index;
-      listEl.dataset.actionsKey = branch.key;
-
-      if (branch.actions.length === 0) {
-        listEl.innerHTML = '<div class="inline-empty">Drop actions here</div>';
-      } else {
-        let inlineDragIndex = null;
-        let inlineDragAllowed = false;
-
-        branch.actions.forEach((childAction, ci) => {
-          const childEl = document.createElement('div');
-          childEl.className = 'inline-child-item';
-          childEl.draggable = true;
-          childEl.dataset.childIndex = ci;
-          childEl.innerHTML = `
-            <span class="inline-child-handle" title="Drag to reorder">⋮⋮</span>
-            <span class="inline-child-num">${ci + 1}</span>
-            <span class="inline-child-name">${ACTION_TYPES[childAction.type]?.name || childAction.type}</span>
-            <span class="inline-child-summary">${getActionSummary(childAction)}</span>
-            <div class="inline-child-buttons">
-              <button class="btn btn-icon btn-sm inline-child-edit" title="Edit">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                </svg>
-              </button>
-              <button class="btn btn-icon btn-sm inline-child-moveout" title="Move out to main sequence">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px">
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-              </button>
-              <button class="btn btn-icon btn-sm btn-danger inline-child-delete" title="Delete">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px">
-                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
-            </div>
-          `;
-
-          // Drag handle
-          const handle = childEl.querySelector('.inline-child-handle');
-          handle.addEventListener('mousedown', (e) => { inlineDragAllowed = true; });
-
-          childEl.addEventListener('dragstart', (e) => {
-            if (!inlineDragAllowed) { e.preventDefault(); return; }
-            e.stopPropagation();
-            inlineDragAllowed = false;
-            inlineDragIndex = ci;
-            childEl.classList.add('dragging');
-            e.dataTransfer.setData('text/plain', JSON.stringify({
-              type: 'inline-child',
-              childIndex: ci,
-              branchKey: branch.key,
-              parentIndex: index
-            }));
-            e.dataTransfer.effectAllowed = 'move';
-          });
-
-          childEl.addEventListener('dragend', (e) => {
-            e.stopPropagation();
-            childEl.classList.remove('dragging');
-            inlineDragIndex = null;
-            inlineDragAllowed = false;
-            listEl.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
-          });
-
-          childEl.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (inlineDragIndex !== null && ci !== inlineDragIndex) {
-              childEl.classList.add('drag-over');
-            }
-          });
-
-          childEl.addEventListener('dragleave', (e) => {
-            childEl.classList.remove('drag-over');
-          });
-
-          childEl.addEventListener('drop', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            childEl.classList.remove('drag-over');
-
-            try {
-              const data = JSON.parse(e.dataTransfer.getData('text/plain'));
-              if (data.type === 'inline-child' && data.branchKey === branch.key && data.parentIndex === index) {
-                // Reorder within same branch
-                const arr = action[branch.key];
-                const [moved] = arr.splice(data.childIndex, 1);
-                arr.splice(ci, 0, moved);
-                updateAction(index, action);
-                markDirty();
-                renderActionSequence();
-                saveCurrentWorkflow();
-                return;
-              }
-              if (data.type === 'main-action' && data.index !== index) {
-                // Drop from main sequence at specific position
-                const mainActions = state.currentWorkflow.actions;
-                const [movedAction] = mainActions.splice(data.index, 1);
-                action[branch.key] = action[branch.key] || [];
-                action[branch.key].splice(ci, 0, movedAction);
-                const newIndex = data.index < index ? index - 1 : index;
-                updateAction(newIndex, action);
-                markDirty();
-                renderActionSequence();
-                saveCurrentWorkflow();
-              }
-            } catch (err) {}
-          });
-
-          // Edit button
-          childEl.querySelector('.inline-child-edit').addEventListener('click', (e) => {
-            e.stopPropagation();
-            openNestedActionConfig(childAction, ci, action, branch.key, branch.label, index);
-          });
-
-          // Move-out button
-          childEl.querySelector('.inline-child-moveout').addEventListener('click', (e) => {
-            e.stopPropagation();
-            const branchArr = action[branch.key];
-            if (!branchArr) return;
-            const [movedAction] = branchArr.splice(ci, 1);
-            state.currentWorkflow.actions.splice(index + 1, 0, movedAction);
-            updateAction(index, action);
-            markDirty();
-            renderActionSequence();
-            saveCurrentWorkflow();
-          });
-
-          // Delete button
-          childEl.querySelector('.inline-child-delete').addEventListener('click', (e) => {
-            e.stopPropagation();
-            action[branch.key].splice(ci, 1);
-            updateAction(index, action);
-            markDirty();
-            renderActionSequence();
-            saveCurrentWorkflow();
-          });
-
-          listEl.appendChild(childEl);
-        });
-
-        // Reset drag flag on mouseup
-        document.addEventListener('mouseup', () => { inlineDragAllowed = false; });
-      }
-
-      branchEl.appendChild(listEl);
-      childrenContainer.appendChild(branchEl);
-
-      // Drag/drop onto inline branch list (from main sequence)
-      listEl.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        listEl.classList.add('drag-over');
-      });
-
-      listEl.addEventListener('dragleave', (e) => {
-        if (!listEl.contains(e.relatedTarget)) {
-          listEl.classList.remove('drag-over');
-        }
-      });
-
-      listEl.addEventListener('drop', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        listEl.classList.remove('drag-over');
-        
-        try {
-          const data = JSON.parse(e.dataTransfer.getData('text/plain'));
-          if (data.type === 'main-action' && data.index !== index) {
-            const mainActions = state.currentWorkflow.actions;
-            const [movedAction] = mainActions.splice(data.index, 1);
-            action[branch.key] = action[branch.key] || [];
-            action[branch.key].push(movedAction);
-            const newIndex = data.index < index ? index - 1 : index;
-            updateAction(newIndex, action);
-            markDirty();
-            renderActionSequence();
-            saveCurrentWorkflow();
-          }
-        } catch (err) {}
-      });
-    });
-
-    item.appendChild(childrenContainer);
+  // Inline nested children for actions with sub-action branches
+  const inlineBranches = getInlineBranches(action);
+  if (inlineBranches.length > 0) {
+    item.appendChild(renderInlineChildren(action, index, inlineBranches));
   }
 
   return item;
+}
+
+/**
+ * Get the inline branches for an action type.
+ * Returns an array of { key, label, actions } objects.
+ * Any action type that has nested sub-actions should be registered here.
+ */
+function getInlineBranches(action) {
+  switch (action.type) {
+    case 'loop':
+      return [{ key: 'actions', label: 'Loop Actions', actions: action.actions || [] }];
+    case 'conditional':
+      return [
+        { key: 'thenActions', label: 'Then', actions: action.thenActions || [] },
+        { key: 'elseActions', label: 'Else', actions: action.elseActions || [] }
+      ];
+    case 'keyboard':
+      if (action.mode === 'hold_and_act') {
+        return [{ key: 'actions', label: `Hold ${action.key || 'key'}`, actions: action.actions || [] }];
+      }
+      return [];
+    default:
+      return [];
+  }
+}
+
+/**
+ * Render inline children container for an action's branches.
+ * Shared by loop, conditional, keyboard hold_and_act, and any future nested action types.
+ * Supports drag/drop reorder within branch, drag from main sequence, move-out, edit, delete.
+ */
+function renderInlineChildren(action, index, branches) {
+  const childrenContainer = document.createElement('div');
+  childrenContainer.className = 'inline-children';
+
+  branches.forEach(branch => {
+    const branchEl = document.createElement('div');
+    branchEl.className = 'inline-branch';
+
+    const header = document.createElement('div');
+    header.className = 'inline-branch-header';
+    header.innerHTML = `
+      <span class="inline-branch-label">${branch.label}</span>
+      <span class="inline-branch-count">${branch.actions.length} action${branch.actions.length !== 1 ? 's' : ''}</span>
+    `;
+    branchEl.appendChild(header);
+
+    const listEl = document.createElement('div');
+    listEl.className = 'inline-branch-list';
+    listEl.dataset.parentIndex = index;
+    listEl.dataset.actionsKey = branch.key;
+
+    if (branch.actions.length === 0) {
+      listEl.innerHTML = '<div class="inline-empty">Drop actions here</div>';
+    } else {
+      let inlineDragIndex = null;
+      let inlineDragAllowed = false;
+
+      branch.actions.forEach((childAction, ci) => {
+        const childEl = document.createElement('div');
+        childEl.className = 'inline-child-item';
+        childEl.draggable = true;
+        childEl.dataset.childIndex = ci;
+        childEl.innerHTML = `
+          <span class="inline-child-handle" title="Drag to reorder">⋮⋮</span>
+          <span class="inline-child-num">${ci + 1}</span>
+          <span class="inline-child-name">${ACTION_TYPES[childAction.type]?.name || childAction.type}</span>
+          <span class="inline-child-summary">${getActionSummary(childAction)}</span>
+          <div class="inline-child-buttons">
+            <button class="btn btn-icon btn-sm inline-child-edit" title="Edit">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+            </button>
+            <button class="btn btn-icon btn-sm inline-child-moveout" title="Move out to main sequence">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </button>
+            <button class="btn btn-icon btn-sm btn-danger inline-child-delete" title="Delete">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+        `;
+
+        // Drag handle
+        const handle = childEl.querySelector('.inline-child-handle');
+        handle.addEventListener('mousedown', () => { inlineDragAllowed = true; });
+
+        childEl.addEventListener('dragstart', (e) => {
+          if (!inlineDragAllowed) { e.preventDefault(); return; }
+          e.stopPropagation();
+          inlineDragAllowed = false;
+          inlineDragIndex = ci;
+          childEl.classList.add('dragging');
+          e.dataTransfer.setData('text/plain', JSON.stringify({
+            type: 'inline-child',
+            childIndex: ci,
+            branchKey: branch.key,
+            parentIndex: index
+          }));
+          e.dataTransfer.effectAllowed = 'move';
+        });
+
+        childEl.addEventListener('dragend', (e) => {
+          e.stopPropagation();
+          childEl.classList.remove('dragging');
+          inlineDragIndex = null;
+          inlineDragAllowed = false;
+          listEl.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+        });
+
+        childEl.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (inlineDragIndex !== null && ci !== inlineDragIndex) {
+            childEl.classList.add('drag-over');
+          }
+        });
+
+        childEl.addEventListener('dragleave', () => {
+          childEl.classList.remove('drag-over');
+        });
+
+        childEl.addEventListener('drop', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          childEl.classList.remove('drag-over');
+
+          try {
+            const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+            if (data.type === 'inline-child' && data.branchKey === branch.key && data.parentIndex === index) {
+              const arr = action[branch.key];
+              const [moved] = arr.splice(data.childIndex, 1);
+              arr.splice(ci, 0, moved);
+              updateAction(index, action);
+              markDirty();
+              renderActionSequence();
+              saveCurrentWorkflow();
+              return;
+            }
+            if (data.type === 'main-action' && data.index !== index) {
+              const mainActions = state.currentWorkflow.actions;
+              const [movedAction] = mainActions.splice(data.index, 1);
+              action[branch.key] = action[branch.key] || [];
+              action[branch.key].splice(ci, 0, movedAction);
+              const newIndex = data.index < index ? index - 1 : index;
+              updateAction(newIndex, action);
+              markDirty();
+              renderActionSequence();
+              saveCurrentWorkflow();
+            }
+          } catch (err) {}
+        });
+
+        // Edit button
+        childEl.querySelector('.inline-child-edit').addEventListener('click', (e) => {
+          e.stopPropagation();
+          openNestedActionConfig(childAction, ci, action, branch.key, branch.label, index);
+        });
+
+        // Move-out button
+        childEl.querySelector('.inline-child-moveout').addEventListener('click', (e) => {
+          e.stopPropagation();
+          const branchArr = action[branch.key];
+          if (!branchArr) return;
+          const [movedAction] = branchArr.splice(ci, 1);
+          state.currentWorkflow.actions.splice(index + 1, 0, movedAction);
+          updateAction(index, action);
+          markDirty();
+          renderActionSequence();
+          saveCurrentWorkflow();
+        });
+
+        // Delete button
+        childEl.querySelector('.inline-child-delete').addEventListener('click', (e) => {
+          e.stopPropagation();
+          action[branch.key].splice(ci, 1);
+          updateAction(index, action);
+          markDirty();
+          renderActionSequence();
+          saveCurrentWorkflow();
+        });
+
+        listEl.appendChild(childEl);
+      });
+
+      // Reset drag flag on mouseup
+      document.addEventListener('mouseup', () => { inlineDragAllowed = false; });
+    }
+
+    branchEl.appendChild(listEl);
+    childrenContainer.appendChild(branchEl);
+
+    // Drag/drop onto inline branch list (from main sequence)
+    listEl.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      listEl.classList.add('drag-over');
+    });
+
+    listEl.addEventListener('dragleave', (e) => {
+      if (!listEl.contains(e.relatedTarget)) {
+        listEl.classList.remove('drag-over');
+      }
+    });
+
+    listEl.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      listEl.classList.remove('drag-over');
+
+      try {
+        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+        if (data.type === 'main-action' && data.index !== index) {
+          const mainActions = state.currentWorkflow.actions;
+          const [movedAction] = mainActions.splice(data.index, 1);
+          action[branch.key] = action[branch.key] || [];
+          action[branch.key].push(movedAction);
+          const newIndex = data.index < index ? index - 1 : index;
+          updateAction(newIndex, action);
+          markDirty();
+          renderActionSequence();
+          saveCurrentWorkflow();
+        }
+      } catch (err) {}
+    });
+  });
+
+  return childrenContainer;
 }
 
 /**
