@@ -239,6 +239,17 @@ class WorkflowExecutor extends EventEmitter {
       await this.keyboardController.pressKey(action.key);
     } else if (action.mode === 'release') {
       await this.keyboardController.releaseKey(action.key);
+    } else if (action.mode === 'hold_and_act') {
+      console.log(`[Executor] Hold key "${action.key}" and execute ${action.actions?.length || 0} sub-actions`);
+      await this.keyboardController.pressKey(action.key);
+      try {
+        if (action.actions && action.actions.length > 0) {
+          await this.executeActions(action.actions);
+        }
+      } finally {
+        await this.keyboardController.releaseKey(action.key);
+        console.log(`[Executor] Released key "${action.key}"`);
+      }
     }
   }
 

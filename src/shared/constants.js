@@ -29,7 +29,8 @@ export const KEYBOARD_MODES = {
   TYPE: 'type',
   PRESS: 'press',
   HOLD: 'hold',
-  RELEASE: 'release'
+  RELEASE: 'release',
+  HOLD_AND_ACT: 'hold_and_act'
 };
 
 export const WAIT_MODES = {

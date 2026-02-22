@@ -716,6 +716,10 @@ function getActionSummary(action) {
         const text = action.text || '';
         return `Type "${text.substring(0, 20)}${text.length > 20 ? '...' : ''}"`;
       }
+      if (action.mode === 'hold_and_act') {
+        const subCount = action.actions?.length || 0;
+        return `Hold ${action.key || 'key'} + ${subCount} action${subCount !== 1 ? 's' : ''}`;
+      }
       return `Press ${action.key || 'key'}`;
     case 'wait':
       if (action.duration) {
@@ -859,7 +863,7 @@ function createDefaultAction(type) {
   const defaults = {
     mouse_move: { type, x: 0, y: 0 },
     mouse_click: { type, button: 'left', clickType: 'single' },
-    keyboard: { type, mode: 'type', text: '' },
+    keyboard: { type, mode: 'type', text: '', actions: [] },
     wait: { type, duration: { min: 500, max: 1000 } },
     conditional: { type, condition: { type: 'image_present' }, thenActions: [], elseActions: [] },
     loop: { type, count: 3, actions: [], delay: { min: 500, max: 1000 } },
@@ -1258,31 +1262,52 @@ function renderConfigFields(action, index, targetConfigBody, saveCallback) {
       break;
 
     case 'keyboard':
+      action.actions = action.actions || [];
       configBody.innerHTML = nameFieldHtml + `
         <div class="config-field">
           <label>Mode</label>
           <select id="config-kb-mode">
             <option value="type" ${action.mode === 'type' ? 'selected' : ''}>Type Text</option>
             <option value="press" ${action.mode === 'press' ? 'selected' : ''}>Press Key</option>
+            <option value="hold_and_act" ${action.mode === 'hold_and_act' ? 'selected' : ''}>Hold Key + Actions</option>
           </select>
         </div>
         <div class="config-field" id="field-text" ${action.mode !== 'type' ? 'style="display:none"' : ''}>
           <label>Text to Type</label>
           <textarea id="config-text" rows="3">${action.text || ''}</textarea>
         </div>
-        <div class="config-field" id="field-key" ${action.mode !== 'press' ? 'style="display:none"' : ''}>
-          <label>Key or Combo</label>
-          <input type="text" id="config-key" value="${action.key || ''}" placeholder="e.g., ctrl+c, enter, a">
-          <p class="config-field-hint">Examples: enter, tab, ctrl+a, cmd+shift+s</p>
+        <div class="config-field" id="field-key" ${(action.mode !== 'press' && action.mode !== 'hold_and_act') ? 'style="display:none"' : ''}>
+          <label>Key to ${action.mode === 'hold_and_act' ? 'Hold' : 'Press'}</label>
+          <input type="text" id="config-key" value="${action.key || ''}" placeholder="e.g., shift, ctrl, alt">
+          <p class="config-field-hint">Examples: shift, ctrl, alt, ctrl+shift</p>
+        </div>
+        <div id="field-hold-actions" ${action.mode !== 'hold_and_act' ? 'style="display:none"' : ''}>
+          <div class="config-section">
+            <div class="config-section-header">
+              <span>Actions while held: <span id="hold-actions-count">${action.actions.length}</span> actions</span>
+              <button class="btn btn-secondary btn-sm" id="btn-edit-hold-actions">Edit</button>
+            </div>
+            <p class="config-field-hint">These actions run while the key is held down. The key is released after all actions complete.</p>
+          </div>
         </div>
       `;
 
       setupName();
 
+      const updateKbFieldVisibility = (mode) => {
+        document.getElementById('field-text').style.display = mode === 'type' ? '' : 'none';
+        document.getElementById('field-key').style.display = (mode === 'press' || mode === 'hold_and_act') ? '' : 'none';
+        document.getElementById('field-hold-actions').style.display = mode === 'hold_and_act' ? '' : 'none';
+        const keyLabel = document.querySelector('#field-key label');
+        if (keyLabel) keyLabel.textContent = mode === 'hold_and_act' ? 'Key to Hold' : 'Key or Combo';
+      };
+
       document.getElementById('config-kb-mode').addEventListener('change', (e) => {
         action.mode = e.target.value;
-        document.getElementById('field-text').style.display = action.mode === 'type' ? '' : 'none';
-        document.getElementById('field-key').style.display = action.mode === 'press' ? '' : 'none';
+        if (e.target.value === 'hold_and_act' && !action.actions) {
+          action.actions = [];
+        }
+        updateKbFieldVisibility(e.target.value);
         save();
       });
 
@@ -1294,6 +1319,10 @@ function renderConfigFields(action, index, targetConfigBody, saveCallback) {
       document.getElementById('config-key').addEventListener('change', (e) => {
         action.key = e.target.value;
         save();
+      });
+
+      document.getElementById('btn-edit-hold-actions')?.addEventListener('click', () => {
+        openNestedActionsEditor(action, 'actions', 'Hold Key Actions', index);
       });
       break;
 

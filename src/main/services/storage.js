@@ -140,8 +140,79 @@ class StorageService {
 
     this.saveWorkflow(sampleWorkflow);
     this.addToRecent(sampleWorkflow.id);
+
+    const shiftClickWorkflow = {
+      id: uuidv4(),
+      name: 'Sample: Shift-Click Inventory',
+      description: 'Demonstrates the "Hold Key + Actions" feature. Holds Shift while clicking multiple inventory slots with pauses in between — perfect for games.',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      loopCount: 1,
+      loopDelay: { min: 500, max: 1000 },
+      actions: [
+        {
+          id: uuidv4(),
+          type: 'keyboard',
+          mode: 'hold_and_act',
+          key: 'shift',
+          name: 'Shift-click 3 inventory slots',
+          actions: [
+            {
+              id: uuidv4(),
+              type: 'mouse_click',
+              button: 'left',
+              clickType: 'single',
+              x: 500,
+              y: 400,
+              name: 'Click slot 1'
+            },
+            {
+              id: uuidv4(),
+              type: 'wait',
+              duration: { min: 200, max: 400 }
+            },
+            {
+              id: uuidv4(),
+              type: 'mouse_click',
+              button: 'left',
+              clickType: 'single',
+              x: 550,
+              y: 400,
+              name: 'Click slot 2'
+            },
+            {
+              id: uuidv4(),
+              type: 'wait',
+              duration: { min: 200, max: 400 }
+            },
+            {
+              id: uuidv4(),
+              type: 'mouse_click',
+              button: 'left',
+              clickType: 'single',
+              x: 600,
+              y: 400,
+              name: 'Click slot 3'
+            }
+          ]
+        },
+        {
+          id: uuidv4(),
+          type: 'wait',
+          duration: { min: 500, max: 1000 },
+          name: 'Pause after shift-clicking'
+        }
+      ],
+      settings: {
+        clickJitter: { enabled: true, radius: 3, distribution: 'gaussian' }
+      }
+    };
+
+    this.saveWorkflow(shiftClickWorkflow);
+    this.addToRecent(shiftClickWorkflow.id);
+
     this.store.set('sampleWorkflowsSeeded', true);
-    console.log('[Storage] Sample workflow created:', sampleWorkflow.name);
+    console.log('[Storage] Sample workflows created');
   }
 
   setWorkflowsDir(newDir) {
