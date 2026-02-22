@@ -1302,8 +1302,21 @@ function renderConfigFields(action, index, targetConfigBody, saveCallback) {
         </div>
         <div class="config-field" id="field-key" ${(action.mode !== 'press' && action.mode !== 'hold_and_act') ? 'style="display:none"' : ''}>
           <label>Key to ${action.mode === 'hold_and_act' ? 'Hold' : 'Press'}</label>
-          <input type="text" id="config-key" value="${action.key || ''}" placeholder="e.g., shift, ctrl, alt">
-          <p class="config-field-hint">Examples: shift, ctrl, alt, ctrl+shift</p>
+          <div class="key-recorder" id="key-recorder">
+            <div class="key-recorder-display" id="key-recorder-display">
+              ${action.key ? `<span class="key-badge">${escapeHtml(action.key)}</span>` : '<span class="key-recorder-placeholder">No key set</span>'}
+            </div>
+            <button class="btn btn-sm key-recorder-btn" id="key-recorder-btn" type="button">
+              <span class="key-recorder-btn-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+                  <circle cx="12" cy="12" r="10"/>
+                  <circle cx="12" cy="12" r="3" fill="currentColor"/>
+                </svg>
+              </span>
+              <span class="key-recorder-btn-label">Record Key</span>
+            </button>
+          </div>
+          <input type="text" id="config-key" value="${action.key || ''}" placeholder="Or type manually: shift, ctrl+a" class="key-recorder-manual">
         </div>
         <div id="field-hold-actions" ${action.mode !== 'hold_and_act' ? 'style="display:none"' : ''}>
           <div class="config-section">
@@ -1340,10 +1353,15 @@ function renderConfigFields(action, index, targetConfigBody, saveCallback) {
         save();
       });
 
+      // Manual key input
       document.getElementById('config-key').addEventListener('change', (e) => {
         action.key = e.target.value;
+        updateKeyRecorderDisplay(action.key);
         save();
       });
+
+      // Key recorder
+      setupKeyRecorder(action, save);
 
       document.getElementById('btn-edit-hold-actions')?.addEventListener('click', () => {
         openNestedActionsEditor(action, 'actions', 'Hold Key Actions', index);
@@ -2694,6 +2712,152 @@ async function deleteTemplate(templateId) {
       }}
     ]
   );
+}
+
+/**
+ * Setup the key recorder widget for keyboard action config.
+ * Listens for real keydown events and builds a combo string (e.g. "ctrl+shift+a").
+ */
+function setupKeyRecorder(action, save) {
+  const recorder = document.getElementById('key-recorder');
+  const btn = document.getElementById('key-recorder-btn');
+  const display = document.getElementById('key-recorder-display');
+  const manualInput = document.getElementById('config-key');
+  if (!recorder || !btn) return;
+
+  let isRecording = false;
+  let heldKeys = new Set();
+  let keydownHandler = null;
+  let keyupHandler = null;
+
+  const KEY_DISPLAY_MAP = {
+    'Control': 'ctrl',
+    'Shift': 'shift',
+    'Alt': 'alt',
+    'Meta': 'cmd',
+    'Enter': 'enter',
+    'Backspace': 'backspace',
+    'Delete': 'delete',
+    'Escape': 'escape',
+    'Tab': 'tab',
+    'ArrowUp': 'up',
+    'ArrowDown': 'down',
+    'ArrowLeft': 'left',
+    'ArrowRight': 'right',
+    'CapsLock': 'capslock',
+    ' ': 'space',
+    'Home': 'home',
+    'End': 'end',
+    'PageUp': 'pageup',
+    'PageDown': 'pagedown',
+    'Insert': 'insert'
+  };
+
+  function normalizeKey(e) {
+    if (KEY_DISPLAY_MAP[e.key]) return KEY_DISPLAY_MAP[e.key];
+    if (e.key.length === 1) return e.key.toLowerCase();
+    if (e.key.startsWith('F') && !isNaN(e.key.slice(1))) return e.key.toLowerCase();
+    return e.key.toLowerCase();
+  }
+
+  function buildCombo() {
+    const order = ['ctrl', 'alt', 'shift', 'cmd'];
+    const modifiers = [];
+    const others = [];
+    for (const k of heldKeys) {
+      if (order.includes(k)) modifiers.push(k);
+      else others.push(k);
+    }
+    modifiers.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    return [...modifiers, ...others].join('+');
+  }
+
+  function startRecording() {
+    isRecording = true;
+    heldKeys.clear();
+    recorder.classList.add('recording');
+    btn.querySelector('.key-recorder-btn-label').textContent = 'Press a key...';
+    display.innerHTML = '<span class="key-recorder-listening">Listening<span class="key-recorder-dots"><span>.</span><span>.</span><span>.</span></span></span>';
+
+    keydownHandler = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const key = normalizeKey(e);
+      if (key === 'escape') {
+        stopRecording(false);
+        return;
+      }
+      heldKeys.add(key);
+      // Live preview of held keys
+      const combo = buildCombo();
+      display.innerHTML = combo.split('+').map(k =>
+        `<span class="key-badge key-badge-live">${escapeHtml(k)}</span>`
+      ).join('<span class="key-badge-separator">+</span>');
+    };
+
+    keyupHandler = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // On first key release, finalize the combo
+      if (heldKeys.size > 0) {
+        const combo = buildCombo();
+        action.key = combo;
+        manualInput.value = combo;
+        save();
+        stopRecording(true);
+      }
+    };
+
+    document.addEventListener('keydown', keydownHandler, true);
+    document.addEventListener('keyup', keyupHandler, true);
+  }
+
+  function stopRecording(success) {
+    isRecording = false;
+    recorder.classList.remove('recording');
+    btn.querySelector('.key-recorder-btn-label').textContent = 'Record Key';
+
+    if (keydownHandler) document.removeEventListener('keydown', keydownHandler, true);
+    if (keyupHandler) document.removeEventListener('keyup', keyupHandler, true);
+    keydownHandler = null;
+    keyupHandler = null;
+
+    if (success) {
+      updateKeyRecorderDisplay(action.key);
+      // Brief success flash
+      recorder.classList.add('recorded');
+      setTimeout(() => recorder.classList.remove('recorded'), 600);
+    } else {
+      updateKeyRecorderDisplay(action.key);
+    }
+    heldKeys.clear();
+  }
+
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (isRecording) {
+      stopRecording(false);
+    } else {
+      startRecording();
+    }
+  });
+}
+
+/**
+ * Update the key recorder display with key badges
+ */
+function updateKeyRecorderDisplay(key) {
+  const display = document.getElementById('key-recorder-display');
+  if (!display) return;
+
+  if (!key) {
+    display.innerHTML = '<span class="key-recorder-placeholder">No key set</span>';
+    return;
+  }
+
+  display.innerHTML = key.split('+').map(k =>
+    `<span class="key-badge">${escapeHtml(k.trim())}</span>`
+  ).join('<span class="key-badge-separator">+</span>');
 }
 
 /**
