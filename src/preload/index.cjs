@@ -476,7 +476,8 @@ contextBridge.exposeInMainWorld('platform', {
   isMac: process.platform === 'darwin',
   isWindows: process.platform === 'win32',
   isLinux: process.platform === 'linux',
-  platform: process.platform
+  platform: process.platform,
+  appVersion: require('../../package.json').version
 });
 
 // Listen for navigation commands from main process

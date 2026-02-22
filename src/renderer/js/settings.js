@@ -35,6 +35,12 @@ function initSettingsView() {
 
   // Load current settings into UI
   loadSettingsIntoUI();
+
+  // Display app version
+  const versionEl = document.getElementById('about-version');
+  if (versionEl && window.platform?.appVersion) {
+    versionEl.textContent = `v${window.platform.appVersion}`;
+  }
 }
 
 /**
@@ -52,6 +58,9 @@ function setupSettingsEvents() {
 
   // Capture template
   document.getElementById('btn-capture-template')?.addEventListener('click', captureNewTemplate);
+
+  // Check for updates
+  document.getElementById('btn-check-updates')?.addEventListener('click', checkForUpdates);
 
   // Click jitter
   clickJitterCheckbox.addEventListener('change', async () => {
@@ -320,4 +329,82 @@ async function captureNewTemplate() {
     console.error('Capture failed:', error);
     showToast('error', 'Error', 'Failed to capture image');
   }
+}
+
+/**
+ * Manually check for updates
+ */
+async function checkForUpdates() {
+  const btn = document.getElementById('btn-check-updates');
+  const label = document.getElementById('check-updates-label');
+  const hint = document.getElementById('update-status-hint');
+  if (!btn || !label) return;
+
+  // Set loading state
+  btn.disabled = true;
+  btn.classList.add('checking');
+  label.textContent = 'Checking...';
+  if (hint) hint.textContent = 'Contacting update server...';
+
+  // Listen for result
+  const onAvailable = (info) => {
+    label.textContent = 'Update Available!';
+    if (hint) hint.textContent = `Version ${info?.version || 'new'} is available — downloading now`;
+    btn.classList.remove('checking');
+    btn.classList.add('update-found');
+    cleanup();
+  };
+
+  const onNotAvailable = () => {
+    label.textContent = 'Up to Date';
+    if (hint) hint.textContent = `You're on the latest version (v${window.platform?.appVersion || '?'})`;
+    btn.classList.remove('checking');
+    btn.classList.add('up-to-date');
+    cleanup();
+    // Reset after a few seconds
+    setTimeout(() => {
+      label.textContent = 'Check for Updates';
+      btn.disabled = false;
+      btn.classList.remove('up-to-date');
+      if (hint) hint.textContent = 'Updates are checked automatically every 30 minutes';
+    }, 4000);
+  };
+
+  const onError = (err) => {
+    label.textContent = 'Check Failed';
+    if (hint) hint.textContent = err?.message || 'Could not reach update server';
+    btn.classList.remove('checking');
+    btn.classList.add('check-failed');
+    cleanup();
+    setTimeout(() => {
+      label.textContent = 'Check for Updates';
+      btn.disabled = false;
+      btn.classList.remove('check-failed');
+      if (hint) hint.textContent = 'Updates are checked automatically every 30 minutes';
+    }, 4000);
+  };
+
+  function cleanup() {
+    window.workflowAPI.onUpdateAvailable?.removeListener?.(onAvailable);
+    window.workflowAPI.onUpdateNotAvailable?.removeListener?.(onNotAvailable);
+    window.workflowAPI.onUpdateError?.removeListener?.(onError);
+  }
+
+  // Register one-shot listeners
+  if (window.workflowAPI.onUpdateAvailable) window.workflowAPI.onUpdateAvailable(onAvailable);
+  if (window.workflowAPI.onUpdateNotAvailable) window.workflowAPI.onUpdateNotAvailable(onNotAvailable);
+  if (window.workflowAPI.onUpdateError) window.workflowAPI.onUpdateError(onError);
+
+  try {
+    await window.workflowAPI.checkForUpdates();
+  } catch (err) {
+    onError(err);
+  }
+
+  // Fallback timeout in case no event fires
+  setTimeout(() => {
+    if (btn.classList.contains('checking')) {
+      onError({ message: 'Timed out waiting for update server' });
+    }
+  }, 15000);
 }
