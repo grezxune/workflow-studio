@@ -212,6 +212,13 @@ input[type="range"]::-webkit-slider-thumb:hover {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  transition: all var(--transition-fast);
+}
+
+.card.workflow-card:hover {
+  border-color: var(--color-primary-500);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.08), var(--shadow-md);
+  transform: translateY(-2px);
 }
 
 .workflow-card-header {
@@ -224,6 +231,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
   font-size: var(--text-base);
   font-weight: 600;
   color: var(--text-primary);
+  letter-spacing: -0.01em;
 }
 
 .workflow-card-description {
@@ -234,6 +242,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  line-height: 1.5;
 }
 
 .workflow-card-meta {
@@ -242,11 +251,19 @@ input[type="range"]::-webkit-slider-thumb:hover {
   gap: var(--space-4);
   font-size: var(--text-xs);
   color: var(--text-tertiary);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-color);
+}
+
+.workflow-card-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .workflow-card-meta svg {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
 }
 
 .workflow-card-actions {
@@ -1613,7 +1630,7 @@ input[type="color"]::-webkit-color-swatch {
 
 /* Recent Workflows */
 .recent-workflows {
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-8);
 }
 
 .recent-workflows h3 {
@@ -1627,35 +1644,40 @@ input[type="color"]::-webkit-color-swatch {
 
 .recent-list {
   display: flex;
-  gap: var(--space-2);
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
 .recent-item {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: var(--bg-tertiary);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all var(--transition-fast);
+  min-width: 140px;
 }
 
 .recent-item:hover {
   border-color: var(--color-primary-500);
   background: var(--bg-elevated);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.08);
+  transform: translateY(-1px);
 }
 
 .recent-item svg {
-  width: 14px;
-  height: 14px;
-  color: var(--text-tertiary);
+  width: 16px;
+  height: 16px;
+  color: var(--color-primary-400);
+  flex-shrink: 0;
 }
 
 .recent-item span {
   font-size: var(--text-sm);
+  font-weight: 500;
 }
 
 /* Execution History */

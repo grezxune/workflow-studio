@@ -291,13 +291,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-6) var(--space-8);
+  padding: var(--space-5) var(--space-8);
   border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
 }
 
 .view-header h1 {
   font-size: var(--text-2xl);
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .view-actions {
@@ -305,11 +307,40 @@ body {
   gap: var(--space-3);
 }
 
+/* Workflows Content Container */
+.workflows-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-6) var(--space-8) var(--space-8);
+}
+
+/* Section Headers */
+.workflows-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.workflows-section-header h3 {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.workflow-count {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  background: var(--bg-tertiary);
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  font-weight: 500;
+}
+
 /* Workflow Grid */
 .workflow-grid {
-  flex: 1;
-  padding: var(--space-6) var(--space-8);
-  overflow-y: auto;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: var(--space-4);
@@ -322,9 +353,27 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: var(--space-12);
+  padding: var(--space-12) var(--space-8);
   text-align: center;
   color: var(--text-secondary);
+}
+
+.empty-state-icon {
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px solid rgba(6, 182, 212, 0.15);
+  border-radius: 50%;
+  margin-bottom: var(--space-6);
+}
+
+.empty-state-icon svg {
+  width: 36px;
+  height: 36px;
+  color: var(--color-primary-400);
 }
 
 .empty-state svg {
@@ -335,14 +384,17 @@ body {
 }
 
 .empty-state h3 {
-  font-size: var(--text-lg);
-  font-weight: 600;
+  font-size: var(--text-xl);
+  font-weight: 700;
   color: var(--text-primary);
   margin-bottom: var(--space-2);
+  letter-spacing: -0.01em;
 }
 
 .empty-state p {
   margin-bottom: var(--space-6);
+  max-width: 360px;
+  line-height: 1.6;
 }
 
 /* Settings Layout */

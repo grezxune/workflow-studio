@@ -78,23 +78,41 @@
           </div>
         </div>
 
-        <!-- Recent Workflows -->
-        <div class="recent-workflows" id="recent-workflows">
-          <h3>Recent</h3>
-          <div class="recent-list" id="recent-workflows-list">
-            <!-- Recent workflow items will be inserted here -->
+        <div class="workflows-content">
+          <!-- Recent Workflows -->
+          <div class="recent-workflows" id="recent-workflows">
+            <h3>Recent</h3>
+            <div class="recent-list" id="recent-workflows-list">
+              <!-- Recent workflow items will be inserted here -->
+            </div>
           </div>
-        </div>
 
-        <div class="workflow-grid" id="workflow-grid">
-          <!-- Workflow cards will be inserted here -->
-          <div class="empty-state" id="empty-workflows">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>
-            </svg>
-            <h3>No workflows yet</h3>
-            <p>Create your first workflow to start automating tasks</p>
-            <button class="btn btn-primary" id="btn-new-workflow-empty">Create Workflow</button>
+          <!-- All Workflows -->
+          <div class="workflows-section-header">
+            <h3>All Workflows</h3>
+            <span class="workflow-count" id="workflow-count"></span>
+          </div>
+
+          <div class="workflow-grid" id="workflow-grid">
+            <!-- Workflow cards will be inserted here -->
+            <div class="empty-state" id="empty-workflows">
+              <div class="empty-state-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                  <path d="M2 17l10 5 10-5"/>
+                  <path d="M2 12l10 5 10-5"/>
+                </svg>
+              </div>
+              <h3>No workflows yet</h3>
+              <p>Create your first workflow to automate repetitive tasks with human-like behavior</p>
+              <button class="btn btn-primary" id="btn-new-workflow-empty">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Create Your First Workflow
+              </button>
+            </div>
           </div>
         </div>
       </section>

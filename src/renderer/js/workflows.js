@@ -42,6 +42,12 @@ function renderWorkflowList() {
   const cards = workflowGrid.querySelectorAll('.workflow-card');
   cards.forEach(card => card.remove());
 
+  // Update workflow count badge
+  const countEl = document.getElementById('workflow-count');
+  const sectionHeader = document.querySelector('.workflows-section-header');
+  if (countEl) countEl.textContent = state.workflows.length > 0 ? state.workflows.length : '';
+  if (sectionHeader) sectionHeader.classList.toggle('hidden', state.workflows.length === 0);
+
   if (state.workflows.length === 0) {
     emptyWorkflows.classList.remove('hidden');
     return;

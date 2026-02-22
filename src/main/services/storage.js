@@ -69,6 +69,79 @@ class StorageService {
 
     this.store.set('settings.workflowsDir', this.workflowsDir);
     console.log('[Storage] Final workflows path:', this.getWorkflowsPath());
+
+    // Seed sample workflow on first launch
+    this.seedSampleWorkflows();
+  }
+
+  seedSampleWorkflows() {
+    const seeded = this.store.get('sampleWorkflowsSeeded', false);
+    if (seeded) return;
+
+    console.log('[Storage] Seeding sample workflows for first launch...');
+
+    const sampleWorkflow = {
+      id: uuidv4(),
+      name: 'Sample: Auto-Clicker Demo',
+      description: 'A demo workflow that moves the mouse, clicks, types text, and waits. Edit or run this to see how Workflow Studio works!',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      loopCount: 3,
+      loopDelay: { min: 800, max: 1500 },
+      actions: [
+        {
+          type: 'mouse_move',
+          x: 960,
+          y: 540,
+          humanized: true,
+          description: 'Move to center of screen'
+        },
+        {
+          type: 'wait',
+          duration: 500,
+          randomize: true,
+          minDuration: 300,
+          maxDuration: 700,
+          description: 'Short pause before clicking'
+        },
+        {
+          type: 'mouse_click',
+          button: 'left',
+          clickType: 'single',
+          x: 960,
+          y: 540,
+          description: 'Click at center'
+        },
+        {
+          type: 'wait',
+          duration: 1000,
+          randomize: true,
+          minDuration: 800,
+          maxDuration: 1200,
+          description: 'Wait after click'
+        },
+        {
+          type: 'keyboard',
+          mode: 'type',
+          text: 'Hello from Workflow Studio!',
+          description: 'Type a greeting'
+        },
+        {
+          type: 'wait',
+          duration: 2000,
+          randomize: false,
+          description: 'Wait 2 seconds before next loop'
+        }
+      ],
+      settings: {
+        clickJitter: { enabled: true, radius: 3, distribution: 'gaussian' }
+      }
+    };
+
+    this.saveWorkflow(sampleWorkflow);
+    this.addToRecent(sampleWorkflow.id);
+    this.store.set('sampleWorkflowsSeeded', true);
+    console.log('[Storage] Sample workflow created:', sampleWorkflow.name);
   }
 
   setWorkflowsDir(newDir) {
