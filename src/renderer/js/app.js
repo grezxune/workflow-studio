@@ -53,6 +53,9 @@ async function initApp() {
   await loadSettings();
   await loadWorkflows();
 
+  // Refresh hotkeys now that workflows are loaded
+  loadHotkeys();
+
   // Check permissions on macOS
   await checkPermissions();
 
