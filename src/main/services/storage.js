@@ -211,6 +211,106 @@ class StorageService {
     this.saveWorkflow(shiftClickWorkflow);
     this.addToRecent(shiftClickWorkflow.id);
 
+    const keyComboWorkflow = {
+      id: uuidv4(),
+      name: 'Sample: Keyboard Combos',
+      description: 'Demonstrates pressing multi-key combos like Ctrl+A, Ctrl+C, and Ctrl+V. Shows how the "Press Key" mode handles simultaneous key presses.',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      loopCount: 1,
+      loopDelay: { min: 500, max: 1000 },
+      actions: [
+        {
+          id: uuidv4(),
+          type: 'mouse_click',
+          button: 'left',
+          clickType: 'single',
+          x: 960,
+          y: 540,
+          name: 'Click to focus a text field'
+        },
+        {
+          id: uuidv4(),
+          type: 'wait',
+          duration: { min: 300, max: 600 }
+        },
+        {
+          id: uuidv4(),
+          type: 'keyboard',
+          mode: 'type',
+          text: 'Workflow Studio is awesome!',
+          name: 'Type some text'
+        },
+        {
+          id: uuidv4(),
+          type: 'wait',
+          duration: { min: 400, max: 800 }
+        },
+        {
+          id: uuidv4(),
+          type: 'keyboard',
+          mode: 'press',
+          key: 'ctrl+a',
+          name: 'Select All (Ctrl+A)'
+        },
+        {
+          id: uuidv4(),
+          type: 'wait',
+          duration: { min: 200, max: 500 }
+        },
+        {
+          id: uuidv4(),
+          type: 'keyboard',
+          mode: 'press',
+          key: 'ctrl+c',
+          name: 'Copy (Ctrl+C)'
+        },
+        {
+          id: uuidv4(),
+          type: 'wait',
+          duration: { min: 300, max: 600 }
+        },
+        {
+          id: uuidv4(),
+          type: 'keyboard',
+          mode: 'press',
+          key: 'end',
+          name: 'Move cursor to end'
+        },
+        {
+          id: uuidv4(),
+          type: 'keyboard',
+          mode: 'press',
+          key: 'enter',
+          name: 'Press Enter for new line'
+        },
+        {
+          id: uuidv4(),
+          type: 'wait',
+          duration: { min: 200, max: 400 }
+        },
+        {
+          id: uuidv4(),
+          type: 'keyboard',
+          mode: 'press',
+          key: 'ctrl+v',
+          name: 'Paste (Ctrl+V)'
+        },
+        {
+          id: uuidv4(),
+          type: 'wait',
+          duration: { min: 500, max: 1000 },
+          name: 'Done — text is now duplicated'
+        }
+      ],
+      settings: {
+        clickJitter: { enabled: true, radius: 3, distribution: 'gaussian' }
+      }
+    };
+
+    this.saveWorkflow(keyComboWorkflow);
+    this.addToRecent(keyComboWorkflow.id);
+
     this.store.set('sampleWorkflowsSeeded', true);
     console.log('[Storage] Sample workflows created');
   }

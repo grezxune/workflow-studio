@@ -36,6 +36,12 @@
             </svg>
             Editor
           </button>
+          <button class="nav-tab" data-view="hotkeys">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z"/>
+            </svg>
+            Hotkeys
+          </button>
           <button class="nav-tab" data-view="settings">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="3"/>
@@ -271,6 +277,68 @@
         </div>
       </section>
 
+      <!-- Hotkeys View -->
+      <section class="view" id="view-hotkeys">
+        <div class="settings-layout">
+          <div class="view-header" style="padding-bottom: 0;">
+            <h1>Global Hotkeys</h1>
+            <p class="view-subtitle">Assign keyboard shortcuts to launch workflows from any application</p>
+          </div>
+
+          <div class="hotkeys-content">
+            <div class="hotkeys-list" id="hotkeys-list">
+              <!-- Hotkey bindings rendered here -->
+            </div>
+
+            <div class="hotkeys-empty hidden" id="hotkeys-empty">
+              <div class="hotkeys-empty-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px;height:48px">
+                  <path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z"/>
+                </svg>
+              </div>
+              <h3>No hotkeys configured</h3>
+              <p>Add a global hotkey below to launch a workflow from anywhere on your computer</p>
+            </div>
+
+            <div class="hotkeys-add-section">
+              <h2>Add New Hotkey</h2>
+              <div class="hotkey-add-form">
+                <div class="hotkey-add-field">
+                  <label>Workflow</label>
+                  <select id="hotkey-workflow-select">
+                    <option value="">Select a workflow...</option>
+                  </select>
+                </div>
+                <div class="hotkey-add-field">
+                  <label>Hotkey</label>
+                  <div class="hotkey-recorder" id="hotkey-recorder">
+                    <div class="hotkey-recorder-display" id="hotkey-recorder-display">
+                      <span class="key-recorder-placeholder">No hotkey set</span>
+                    </div>
+                    <button class="btn btn-sm key-recorder-btn" id="hotkey-recorder-btn" type="button">
+                      <span class="key-recorder-btn-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+                          <circle cx="12" cy="12" r="10"/>
+                          <circle cx="12" cy="12" r="3" fill="currentColor"/>
+                        </svg>
+                      </span>
+                      <span class="hotkey-recorder-btn-label">Record Hotkey</span>
+                    </button>
+                  </div>
+                  <p class="setting-hint">Press a key combo like Ctrl+Shift+1. Must include a modifier (Ctrl, Alt, Shift).</p>
+                </div>
+                <button class="btn btn-primary" id="btn-add-hotkey" disabled>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                  Add Hotkey
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Settings View -->
       <section class="view" id="view-settings">
         <div class="settings-layout">
@@ -497,6 +565,7 @@
   <script src="js/workflows.js"></script>
   <script src="js/editor.js"></script>
   <script src="js/settings.js"></script>
+  <script src="js/hotkeys.js"></script>
   <script src="js/execution.js"></script>
   <script src="js/quick-record.js"></script>
 </body>

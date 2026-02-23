@@ -463,6 +463,22 @@ contextBridge.exposeInMainWorld('workflowAPI', {
     return () => ipcRenderer.removeListener('update:error', subscription);
   },
 
+  // ==================== HOTKEYS ====================
+
+  getHotkeys: () => ipcRenderer.invoke('hotkeys:get-all'),
+
+  setHotkey: (accelerator, workflowId, workflowName) =>
+    ipcRenderer.invoke('hotkeys:set', { accelerator, workflowId, workflowName }),
+
+  removeHotkey: (workflowId) =>
+    ipcRenderer.invoke('hotkeys:remove', workflowId),
+
+  onHotkeyTriggered: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('hotkeys:triggered', subscription);
+    return () => ipcRenderer.removeListener('hotkeys:triggered', subscription);
+  },
+
   // Remove all listeners
   removeAllListeners: () => {
     validReceiveChannels.forEach(channel => {

@@ -38,6 +38,7 @@ async function initApp() {
   // Initialize views first (sets up DOM references)
   initWorkflowsView();
   initEditorView();
+  initHotkeysView();
   initSettingsView();
   
   // Initialize quick record mode
@@ -84,6 +85,7 @@ function cacheElements() {
   elements.views = {
     workflows: document.getElementById('view-workflows'),
     editor: document.getElementById('view-editor'),
+    hotkeys: document.getElementById('view-hotkeys'),
     settings: document.getElementById('view-settings')
   };
   elements.statusIndicator = document.getElementById('status-indicator');
@@ -249,31 +251,8 @@ function setupIPCListeners() {
     }
   });
 
-  // Setup keyboard shortcuts for workflow hotkeys
-  setupWorkflowHotkeyListeners();
-
   // Auto-update events
   setupUpdateListeners();
-}
-
-/**
- * Setup global hotkey listeners for running workflows
- */
-function setupWorkflowHotkeyListeners() {
-  document.addEventListener('keydown', async (e) => {
-    // Only listen for F-keys (except F7 which is panic)
-    if (!e.key.startsWith('F') || e.key === 'F7') return;
-
-    const hotkeyMap = JSON.parse(localStorage.getItem('workflow-hotkeys') || '{}');
-
-    // Find workflow mapped to this hotkey
-    const workflowId = Object.keys(hotkeyMap).find(id => hotkeyMap[id] === e.key);
-
-    if (workflowId && state.executionState === 'idle') {
-      e.preventDefault();
-      runWorkflow(workflowId);
-    }
-  });
 }
 
 /**

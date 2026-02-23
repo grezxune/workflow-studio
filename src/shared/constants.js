@@ -147,7 +147,13 @@ export const IPC_CHANNELS = {
   CREATE_TEMPLATE: 'template:create',
   UPDATE_TEMPLATE: 'template:update',
   DELETE_TEMPLATE: 'template:delete',
-  DUPLICATE_TEMPLATE: 'template:duplicate'
+  DUPLICATE_TEMPLATE: 'template:duplicate',
+
+  // Hotkeys
+  GET_HOTKEYS: 'hotkeys:get-all',
+  SET_HOTKEY: 'hotkeys:set',
+  REMOVE_HOTKEY: 'hotkeys:remove',
+  HOTKEY_TRIGGERED: 'hotkeys:triggered'
 };
 
 export const DEFAULT_SETTINGS = {

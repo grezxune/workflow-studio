@@ -16,6 +16,7 @@ import { getPermissionStatus, requestAccessibilityPermission } from '../lib/perm
 import quickRecord from '../services/quick-record.js';
 import workflowPreview from '../services/workflow-preview.js';
 import floatingBar from '../services/floating-bar.js';
+import { initHotkeyService, getHotkeys, setHotkey, removeHotkey } from '../services/hotkey-service.js';
 
 let mainWindow = null;
 
@@ -56,6 +57,8 @@ export function initializeIPC(window) {
   registerPreviewHandlers();
   registerFloatingBarHandlers();
   floatingBar.initFloatingBarIPC();
+  registerHotkeyHandlers();
+  initHotkeyService(mainWindow);
 }
 
 function sendToRenderer(channel, data) {
@@ -495,6 +498,23 @@ function registerFloatingBarHandlers() {
     floatingBar.sendToFloatingBar('floating-bar:wait-start', { duration: data.duration });
     floatingBar.sendToFloatingBar('floating-bar:wait-tick', data);
     return { success: true };
+  });
+}
+
+/**
+ * Register Hotkey handlers
+ */
+function registerHotkeyHandlers() {
+  ipcMain.handle(IPC_CHANNELS.GET_HOTKEYS, async () => {
+    return getHotkeys();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SET_HOTKEY, async (event, { accelerator, workflowId, workflowName }) => {
+    return setHotkey(accelerator, workflowId, workflowName);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.REMOVE_HOTKEY, async (event, workflowId) => {
+    return removeHotkey(workflowId);
   });
 }
 
