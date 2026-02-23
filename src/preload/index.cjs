@@ -234,6 +234,9 @@ contextBridge.exposeInMainWorld('workflowAPI', {
   setPanicHotkey: (hotkey) =>
     ipcRenderer.invoke(IPC_CHANNELS.SET_PANIC_HOTKEY, hotkey),
 
+  setPauseHotkey: (hotkey) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SET_PAUSE_HOTKEY, hotkey),
+
   getSafetyConfig: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SAFETY_CONFIG),
 

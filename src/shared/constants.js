@@ -76,6 +76,7 @@ export const JITTER_DISTRIBUTIONS = {
 
 export const SAFETY_KEYS = {
   PANIC: 'F7',
+  PAUSE: 'F6',
   FOCUS_CHECK: 'F8',
   DRY_RUN: 'F9'
 };
@@ -121,6 +122,7 @@ export const IPC_CHANNELS = {
   GET_WORKFLOWS_DIR: 'settings:get-workflows-dir',
 
   SET_PANIC_HOTKEY: 'safety:set-panic-hotkey',
+  SET_PAUSE_HOTKEY: 'safety:set-pause-hotkey',
   GET_SAFETY_CONFIG: 'safety:get-config',
   TRIGGER_PANIC: 'safety:trigger-panic',
   PANIC_TRIGGERED: 'safety:panic-triggered',

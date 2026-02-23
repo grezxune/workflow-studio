@@ -7,6 +7,7 @@
 // DOM references
 let workflowsDirInput = null;
 let panicHotkeyInput = null;
+let pauseHotkeyInput = null;
 let clickJitterCheckbox = null;
 let jitterRadiusSlider = null;
 let jitterRadiusValue = null;
@@ -22,6 +23,7 @@ function initSettingsView() {
   // Cache DOM elements
   workflowsDirInput = document.getElementById('workflows-dir');
   panicHotkeyInput = document.getElementById('panic-hotkey');
+  pauseHotkeyInput = document.getElementById('pause-hotkey');
   clickJitterCheckbox = document.getElementById('click-jitter-enabled');
   jitterRadiusSlider = document.getElementById('jitter-radius');
   jitterRadiusValue = document.getElementById('jitter-radius-value');
@@ -52,6 +54,9 @@ function setupSettingsEvents() {
 
   // Panic hotkey
   document.getElementById('btn-set-hotkey').addEventListener('click', changePanicHotkey);
+
+  // Pause hotkey
+  document.getElementById('btn-set-pause-hotkey')?.addEventListener('click', changePauseHotkey);
 
   // Clear history
   document.getElementById('btn-clear-history')?.addEventListener('click', clearExecutionHistory);
@@ -120,6 +125,9 @@ async function loadSettingsIntoUI() {
 
   // Panic hotkey
   panicHotkeyInput.value = state.settings.panicHotkey || 'F7';
+
+  // Pause hotkey
+  pauseHotkeyInput.value = state.settings.pauseHotkey || 'F6';
 
   // Click jitter
   const jitter = state.settings.clickJitter || {};
@@ -225,6 +233,70 @@ async function changePanicHotkey() {
     }
 
     // Capitalize single letters
+    if (key.length === 1) {
+      key = key.toUpperCase();
+    }
+
+    parts.push(key);
+    input.value = parts.join('+');
+  });
+}
+
+/**
+ * Change pause hotkey
+ */
+async function changePauseHotkey() {
+  showModal(
+    'Change Pause / Resume Hotkey',
+    `
+      <p style="margin-bottom: var(--space-4);">Press the key or key combination you want to use to pause and resume workflows.</p>
+      <div class="config-field">
+        <input type="text" id="new-pause-hotkey-input" placeholder="Press a key..." readonly style="text-align: center; font-size: var(--text-lg);">
+      </div>
+      <p class="config-field-hint">Common options: F6, Pause, Ctrl+Shift+P</p>
+    `,
+    [
+      { label: 'Cancel', class: 'btn-secondary' },
+      {
+        label: 'Save',
+        class: 'btn-primary',
+        onClick: async () => {
+          const newHotkey = document.getElementById('new-pause-hotkey-input').value;
+          if (newHotkey) {
+            try {
+              await window.workflowAPI.setPauseHotkey(newHotkey);
+              await saveSettings({ pauseHotkey: newHotkey });
+              pauseHotkeyInput.value = newHotkey;
+              showToast('success', 'Saved', 'Pause hotkey updated');
+            } catch (error) {
+              showToast('error', 'Error', 'Failed to set hotkey');
+            }
+          }
+        }
+      }
+    ]
+  );
+
+  // Setup key capture
+  const input = document.getElementById('new-pause-hotkey-input');
+  input.focus();
+
+  input.addEventListener('keydown', (e) => {
+    e.preventDefault();
+
+    const parts = [];
+    if (e.ctrlKey) parts.push('Ctrl');
+    if (e.altKey) parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.metaKey) parts.push('Cmd');
+
+    let key = e.key;
+    if (key === ' ') key = 'Space';
+    if (key === 'Control' || key === 'Alt' || key === 'Shift' || key === 'Meta') {
+      input.value = parts.join('+') || '';
+      return;
+    }
+
     if (key.length === 1) {
       key = key.toUpperCase();
     }

@@ -150,7 +150,8 @@ function initializeSafety() {
   const settings = storage.getSettings();
 
   safety.initialize({
-    panicHotkey: settings.panicHotkey || 'F7'
+    panicHotkey: settings.panicHotkey || 'F7',
+    pauseHotkey: settings.pauseHotkey || 'F6'
   });
 
   safety.on('panic:triggered', ({ source }) => {

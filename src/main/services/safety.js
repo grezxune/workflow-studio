@@ -12,8 +12,11 @@ class SafetyService extends EventEmitter {
   constructor() {
     super();
     this.panicHotkey = SAFETY_KEYS.PANIC;
+    this.pauseHotkey = SAFETY_KEYS.PAUSE;
     this.isRegistered = false;
+    this.isPauseRegistered = false;
     this.onPanicCallback = null;
+    this.onPauseCallback = null;
     this.deadManSwitchKey = null;
     this.deadManSwitchActive = false;
     this.deadManSwitchTimer = null;
@@ -24,7 +27,12 @@ class SafetyService extends EventEmitter {
       this.panicHotkey = options.panicHotkey;
     }
 
+    if (options.pauseHotkey) {
+      this.pauseHotkey = options.pauseHotkey;
+    }
+
     this.registerPanicHotkey();
+    this.registerPauseHotkey();
 
     if (options.deadManSwitch) {
       this.setupDeadManSwitch(options.deadManSwitch);
@@ -49,6 +57,53 @@ class SafetyService extends EventEmitter {
       }
     } catch (error) {
       this.emit('panic:registration_error', { error });
+    }
+  }
+
+  registerPauseHotkey() {
+    if (this.isPauseRegistered) {
+      globalShortcut.unregister(this.pauseHotkey);
+    }
+
+    try {
+      const registered = globalShortcut.register(this.pauseHotkey, () => {
+        this.triggerPause('hotkey');
+      });
+
+      if (registered) {
+        this.isPauseRegistered = true;
+        console.log(`[Safety] Pause hotkey registered: ${this.pauseHotkey}`);
+      } else {
+        console.warn(`[Safety] Failed to register pause hotkey: ${this.pauseHotkey}`);
+      }
+    } catch (error) {
+      console.error('[Safety] Pause hotkey registration error:', error);
+    }
+  }
+
+  setPauseHotkey(newHotkey) {
+    if (this.isPauseRegistered) {
+      globalShortcut.unregister(this.pauseHotkey);
+      this.isPauseRegistered = false;
+    }
+
+    this.pauseHotkey = newHotkey;
+    this.registerPauseHotkey();
+  }
+
+  onPause(callback) {
+    this.onPauseCallback = callback;
+  }
+
+  triggerPause(source = 'manual') {
+    this.emit('pause:triggered', { source });
+
+    if (this.onPauseCallback) {
+      try {
+        this.onPauseCallback(source);
+      } catch (error) {
+        console.error('Error in pause callback:', error);
+      }
     }
   }
 
@@ -134,7 +189,9 @@ class SafetyService extends EventEmitter {
   getConfig() {
     return {
       panicHotkey: this.panicHotkey,
+      pauseHotkey: this.pauseHotkey,
       isRegistered: this.isRegistered,
+      isPauseRegistered: this.isPauseRegistered,
       deadManSwitch: {
         key: this.deadManSwitchKey,
         timeout: this.deadManSwitchTimeout,
@@ -147,6 +204,11 @@ class SafetyService extends EventEmitter {
     if (this.isRegistered) {
       globalShortcut.unregister(this.panicHotkey);
       this.isRegistered = false;
+    }
+
+    if (this.isPauseRegistered) {
+      globalShortcut.unregister(this.pauseHotkey);
+      this.isPauseRegistered = false;
     }
 
     if (this.deadManSwitchKey) {

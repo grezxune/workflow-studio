@@ -45,6 +45,17 @@ export function initializeIPC(window) {
     sendToRenderer(IPC_CHANNELS.EXECUTION_STOPPED, { source });
   });
 
+  safety.onPause((source) => {
+    const status = executor.getStatus();
+    if (status.state === 'running') {
+      executor.pause();
+      sendToRenderer(IPC_CHANNELS.EXECUTION_PAUSED, { source });
+    } else if (status.state === 'paused') {
+      executor.resume();
+      sendToRenderer(IPC_CHANNELS.EXECUTION_RESUMED, { source });
+    }
+  });
+
   setupExecutorEvents(executor);
   registerWorkflowHandlers(storage);
   registerExecutionHandlers(executor);
@@ -335,6 +346,11 @@ function registerDetectionHandlers(detection) {
 function registerSafetyHandlers(safety) {
   ipcMain.handle(IPC_CHANNELS.SET_PANIC_HOTKEY, async (event, hotkey) => {
     safety.setPanicHotkey(hotkey);
+    return { success: true };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SET_PAUSE_HOTKEY, async (event, hotkey) => {
+    safety.setPauseHotkey(hotkey);
     return { success: true };
   });
 
