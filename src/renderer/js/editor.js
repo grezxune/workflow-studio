@@ -942,10 +942,16 @@ function selectAction(index) {
 }
 
 /**
- * Mark workflow as dirty (unsaved changes)
+ * Mark workflow as dirty (unsaved changes) and trigger debounced auto-save
  */
+let _autoSaveTimer = null;
 function markDirty() {
   editorState.isDirty = true;
+  // Debounced auto-save: persist within 500ms of last change
+  if (_autoSaveTimer) clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(() => {
+    saveCurrentWorkflow();
+  }, 500);
 }
 
 /**
