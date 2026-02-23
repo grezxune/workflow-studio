@@ -165,9 +165,11 @@ function showExecutionOverlay(workflow) {
   updateProgressDisplay();
   executionAction.textContent = 'Starting...';
 
-  // Reset pause button
+  // Reset pause button and update hotkey labels
   currentExecution.isPaused = false;
   setPauseButtonState(false);
+  const stopLabel = document.getElementById('stop-hotkey-label');
+  if (stopLabel) stopLabel.textContent = state.settings?.panicHotkey || 'F7';
 
   // Reset scheduled stop UI
   clearScheduledStop();
@@ -284,9 +286,12 @@ async function togglePause() {
 function setPauseButtonState(paused) {
   const pauseIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
   const resumeIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
+  const pauseKey = state.settings?.pauseHotkey || 'F6';
 
   if (btnPauseExecution) {
-    btnPauseExecution.innerHTML = paused ? `${resumeIcon} Resume` : `${pauseIcon} Pause`;
+    btnPauseExecution.innerHTML = paused
+      ? `${resumeIcon} Resume (<span class="hotkey-label" id="pause-hotkey-label">${pauseKey}</span>)`
+      : `${pauseIcon} Pause (<span class="hotkey-label" id="pause-hotkey-label">${pauseKey}</span>)`;
   }
 
   // Sync to floating bar native window
