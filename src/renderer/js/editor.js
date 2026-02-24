@@ -1073,7 +1073,7 @@ function closeConfigPanel() {
 /**
  * Render config fields for an action
  */
-function renderConfigFields(action, index, targetConfigBody, saveCallback) {
+async function renderConfigFields(action, index, targetConfigBody, saveCallback) {
   const configBody = targetConfigBody || document.getElementById('config-body');
   const save = saveCallback || (() => updateAction(index, action));
   const rerender = () => renderConfigFields(action, index, configBody, save);
@@ -1173,9 +1173,7 @@ function renderConfigFields(action, index, targetConfigBody, saveCallback) {
         <div id="image-fields" ${action.moveMode !== 'image' ? 'style="display:none"' : ''}>
           <div class="config-field">
             <label>Image Template</label>
-            <select id="config-move-image-id">
-              <option value="">Select image...</option>
-            </select>
+            <div id="config-move-image-id"></div>
           </div>
           <div class="config-field">
             <button class="btn btn-secondary" id="btn-capture-move-image">
@@ -1319,17 +1317,15 @@ function renderConfigFields(action, index, targetConfigBody, saveCallback) {
       });
 
       // Image mode fields
-      loadImageOptions('config-move-image-id', action.imageId);
-
-      document.getElementById('config-move-image-id').addEventListener('change', (e) => {
-        action.imageId = e.target.value || null;
+      const moveImagePicker = await loadImageOptions('config-move-image-id', action.imageId, (val) => {
+        action.imageId = val;
         save();
       });
 
       document.getElementById('btn-capture-move-image').addEventListener('click', () => {
         captureImageTemplate((imageId) => {
           action.imageId = imageId;
-          loadImageOptions('config-move-image-id', imageId);
+          if (moveImagePicker) { moveImagePicker.setValue(imageId); moveImagePicker.refresh(); }
           save();
         });
       });
@@ -1591,7 +1587,7 @@ function updateAction(index, action) {
 /**
  * Render Conditional action config
  */
-function renderConditionalConfig(configBody, action, index, nameFieldHtml = '', save) {
+async function renderConditionalConfig(configBody, action, index, nameFieldHtml = '', save) {
   if (!save) save = () => updateAction(index, action);
   action.condition = action.condition || { type: 'image_present' };
   action.thenActions = action.thenActions || [];
@@ -1608,9 +1604,7 @@ function renderConditionalConfig(configBody, action, index, nameFieldHtml = '', 
     </div>
     <div class="config-field" id="cond-image-field" ${action.condition.type === 'pixel_match' ? 'style="display:none"' : ''}>
       <label>Image Template</label>
-      <select id="config-condition-image">
-        <option value="">Select image...</option>
-      </select>
+      <div id="config-condition-image"></div>
       <button class="btn btn-secondary btn-sm" id="btn-capture-cond-image" style="margin-top:8px">
         Capture New Image
       </button>
@@ -1651,7 +1645,10 @@ function renderConditionalConfig(configBody, action, index, nameFieldHtml = '', 
   `;
 
   // Load images for dropdown
-  loadImageOptions('config-condition-image', action.condition.imageId);
+  const condImagePicker = await loadImageOptions('config-condition-image', action.condition.imageId, (val) => {
+    action.condition.imageId = val;
+    save();
+  });
 
   const nameInput = document.getElementById('config-action-name');
   if (nameInput) {
@@ -1668,11 +1665,6 @@ function renderConditionalConfig(configBody, action, index, nameFieldHtml = '', 
     document.getElementById('cond-confidence-field').style.display = isPixel ? 'none' : '';
     document.getElementById('cond-pixel-field').style.display = isPixel ? '' : 'none';
     document.getElementById('cond-tolerance-field').style.display = isPixel ? '' : 'none';
-    save();
-  });
-
-  document.getElementById('config-condition-image').addEventListener('change', (e) => {
-    action.condition.imageId = e.target.value || null;
     save();
   });
 
@@ -1699,7 +1691,7 @@ function renderConditionalConfig(configBody, action, index, nameFieldHtml = '', 
   document.getElementById('btn-capture-cond-image').addEventListener('click', () => {
     captureImageTemplate((imageId) => {
       action.condition.imageId = imageId;
-      loadImageOptions('config-condition-image', imageId);
+      if (condImagePicker) { condImagePicker.setValue(imageId); condImagePicker.refresh(); }
       save();
     });
   });
@@ -1803,14 +1795,12 @@ function renderLoopConfig(configBody, action, index, nameFieldHtml = '', save) {
 /**
  * Render Image Detect action config
  */
-function renderImageDetectConfig(configBody, action, index, nameFieldHtml = '', save) {
+async function renderImageDetectConfig(configBody, action, index, nameFieldHtml = '', save) {
   if (!save) save = () => updateAction(index, action);
   configBody.innerHTML = nameFieldHtml + `
     <div class="config-field">
       <label>Image Template</label>
-      <select id="config-image-id">
-        <option value="">Select image...</option>
-      </select>
+      <div id="config-image-id"></div>
     </div>
     <div class="config-field">
       <button class="btn btn-secondary" id="btn-capture-image">
@@ -1902,7 +1892,11 @@ function renderImageDetectConfig(configBody, action, index, nameFieldHtml = '', 
   `;
 
   // Load images for dropdown
-  loadImageOptions('config-image-id', action.imageId);
+  const detectImagePicker = await loadImageOptions('config-image-id', action.imageId, (val) => {
+    action.imageId = val;
+    save();
+    updateImagePreview(val);
+  });
 
   const nameInput = document.getElementById('config-action-name');
   if (nameInput) {
@@ -1912,16 +1906,10 @@ function renderImageDetectConfig(configBody, action, index, nameFieldHtml = '', 
     });
   }
 
-  document.getElementById('config-image-id').addEventListener('change', (e) => {
-    action.imageId = e.target.value || null;
-    save();
-    updateImagePreview(action.imageId);
-  });
-
   document.getElementById('btn-capture-image').addEventListener('click', () => {
     captureImageTemplate((imageId) => {
       action.imageId = imageId;
-      loadImageOptions('config-image-id', imageId);
+      if (detectImagePicker) { detectImagePicker.setValue(imageId); detectImagePicker.refresh(); }
       save();
       updateImagePreview(imageId);
     });
@@ -2153,17 +2141,54 @@ function hexToRgb(hex) {
 }
 
 /**
- * Load image options into a select dropdown
+ * Create a searchable image picker with folder hierarchy inside a container element.
+ * Returns a controller: { onChange(cb), setValue(id), getValue(), destroy() }
  */
-async function loadImageOptions(selectId, selectedId) {
-  const select = document.getElementById(selectId);
-  if (!select) return;
+async function loadImageOptions(containerId, selectedId, onChangeCb) {
+  const container = document.getElementById(containerId);
+  if (!container) return null;
 
+  let images = [];
   try {
-    const images = await window.workflowAPI.getImages();
-    select.innerHTML = '<option value="">Select image...</option>';
+    images = await window.workflowAPI.getImages() || [];
+  } catch (e) {
+    console.error('Failed to load images:', e);
+  }
 
-    // Group by folder
+  let currentValue = selectedId || null;
+  let isOpen = false;
+  let _onChange = onChangeCb || null;
+
+  const chevronSvg = `<svg class="picker-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
+  const folderSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`;
+
+  function getDisplayLabel(id) {
+    if (!id) return null;
+    const img = images.find(i => i.id === id);
+    if (!img) return id;
+    return img.folder ? `${img.folder} / ${img.id}` : img.id;
+  }
+
+  // Build the picker DOM
+  container.innerHTML = '';
+  container.classList.add('image-picker');
+
+  const trigger = document.createElement('div');
+  trigger.className = 'image-picker-trigger';
+  trigger.innerHTML = currentValue
+    ? `<span class="picker-value">${escapeHtml(getDisplayLabel(currentValue))}</span>${chevronSvg}`
+    : `<span class="picker-value picker-placeholder">Select image...</span>${chevronSvg}`;
+  container.appendChild(trigger);
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'image-picker-dropdown';
+  dropdown.style.display = 'none';
+  container.appendChild(dropdown);
+
+  function renderDropdown(filter = '') {
+    const q = filter.toLowerCase();
+
+    // Group images
     const uncategorized = images.filter(i => !i.folder);
     const folderMap = {};
     images.forEach(img => {
@@ -2173,31 +2198,126 @@ async function loadImageOptions(selectId, selectedId) {
       }
     });
 
-    // Render uncategorized first
-    uncategorized.forEach(img => {
-      const option = document.createElement('option');
-      option.value = img.id;
-      option.textContent = img.id;
-      if (img.id === selectedId) option.selected = true;
-      select.appendChild(option);
+    let html = `<div class="image-picker-search"><input type="text" placeholder="Search images..." value="${escapeHtml(filter)}"></div><div class="image-picker-results">`;
+
+    let hasResults = false;
+
+    // Uncategorized images
+    const filteredUncat = uncategorized.filter(img =>
+      !q || img.id.toLowerCase().includes(q)
+    );
+    if (filteredUncat.length > 0) {
+      filteredUncat.forEach(img => {
+        hasResults = true;
+        const sel = img.id === currentValue ? ' selected' : '';
+        const thumb = img.path ? `<img class="picker-item-thumb" src="file://${img.path.replace(/\\/g, '/')}?t=${Date.now()}" alt="">` : '';
+        html += `<div class="image-picker-item${sel}" data-value="${escapeHtml(img.id)}">${thumb}<span class="picker-item-name">${escapeHtml(img.id)}</span></div>`;
+      });
+    }
+
+    // Folders
+    Object.keys(folderMap).sort().forEach(folder => {
+      const folderMatches = folder.toLowerCase().includes(q);
+      const filteredImgs = folderMap[folder].filter(img =>
+        !q || folderMatches || img.id.toLowerCase().includes(q)
+      );
+      if (filteredImgs.length > 0) {
+        hasResults = true;
+        html += `<div class="image-picker-folder">${folderSvg} ${escapeHtml(folder)}</div>`;
+        filteredImgs.forEach(img => {
+          const sel = img.id === currentValue ? ' selected' : '';
+          const thumb = img.path ? `<img class="picker-item-thumb" src="file://${img.path.replace(/\\/g, '/')}?t=${Date.now()}" alt="">` : '';
+          html += `<div class="image-picker-item in-folder${sel}" data-value="${escapeHtml(img.id)}">${thumb}<span class="picker-item-name">${escapeHtml(img.id)}</span></div>`;
+        });
+      }
     });
 
-    // Render each folder as an optgroup
-    Object.keys(folderMap).sort().forEach(folder => {
-      const group = document.createElement('optgroup');
-      group.label = folder;
-      folderMap[folder].forEach(img => {
-        const option = document.createElement('option');
-        option.value = img.id;
-        option.textContent = img.id;
-        if (img.id === selectedId) option.selected = true;
-        group.appendChild(option);
+    if (!hasResults) {
+      html += `<div class="image-picker-empty">${q ? 'No images match "' + escapeHtml(filter) + '"' : 'No image templates'}</div>`;
+    }
+
+    html += '</div>';
+    dropdown.innerHTML = html;
+
+    // Wire search input
+    const searchInput = dropdown.querySelector('.image-picker-search input');
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        renderDropdown(e.target.value);
       });
-      select.appendChild(group);
+      // Prevent trigger close when clicking in search
+      searchInput.addEventListener('mousedown', (e) => e.stopPropagation());
+      // Keep focus
+      setTimeout(() => searchInput.focus(), 0);
+      // Place cursor at end
+      searchInput.selectionStart = searchInput.selectionEnd = searchInput.value.length;
+    }
+
+    // Wire item clicks
+    dropdown.querySelectorAll('.image-picker-item').forEach(el => {
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const val = el.dataset.value;
+        selectValue(val);
+        closeDropdown();
+      });
     });
-  } catch (error) {
-    console.error('Failed to load images:', error);
   }
+
+  function selectValue(val) {
+    currentValue = val || null;
+    trigger.innerHTML = currentValue
+      ? `<span class="picker-value">${escapeHtml(getDisplayLabel(currentValue))}</span>${chevronSvg}`
+      : `<span class="picker-value picker-placeholder">Select image...</span>${chevronSvg}`;
+    if (_onChange) _onChange(currentValue);
+  }
+
+  function openDropdown() {
+    if (isOpen) return;
+    isOpen = true;
+    trigger.classList.add('open');
+    dropdown.style.display = '';
+    renderDropdown('');
+  }
+
+  function closeDropdown() {
+    if (!isOpen) return;
+    isOpen = false;
+    trigger.classList.remove('open');
+    dropdown.style.display = 'none';
+  }
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (isOpen) closeDropdown();
+    else openDropdown();
+  });
+
+  // Close on outside click
+  function handleOutsideClick(e) {
+    if (!container.contains(e.target)) closeDropdown();
+  }
+  document.addEventListener('mousedown', handleOutsideClick);
+
+  const controller = {
+    onChange(cb) { _onChange = cb; },
+    setValue(id) { selectValue(id); },
+    getValue() { return currentValue; },
+    async refresh() {
+      try { images = await window.workflowAPI.getImages() || []; } catch (e) {}
+      if (isOpen) renderDropdown('');
+      // Update trigger label
+      trigger.innerHTML = currentValue
+        ? `<span class="picker-value">${escapeHtml(getDisplayLabel(currentValue))}</span>${chevronSvg}`
+        : `<span class="picker-value picker-placeholder">Select image...</span>${chevronSvg}`;
+    },
+    destroy() {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    }
+  };
+
+  return controller;
 }
 
 /**
