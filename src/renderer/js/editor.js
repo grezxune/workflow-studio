@@ -282,6 +282,15 @@ function setupEditorEvents() {
   document.getElementById('btn-run').addEventListener('click', runCurrentWorkflow);
   document.getElementById('btn-dry-run').addEventListener('click', () => runCurrentWorkflow(true));
   document.getElementById('btn-stop').addEventListener('click', stopExecution);
+  document.getElementById('btn-save-workflow').addEventListener('click', manualSaveWorkflow);
+
+  // Ctrl+S to save
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+      manualSaveWorkflow();
+    }
+  });
 
   // Config panel close
   document.getElementById('btn-close-config').addEventListener('click', closeConfigPanel);
@@ -958,6 +967,23 @@ function markDirty() {
   _autoSaveTimer = setTimeout(() => {
     saveCurrentWorkflow();
   }, 500);
+}
+
+/**
+ * Manual save triggered by button or Ctrl+S — always saves and shows feedback
+ */
+async function manualSaveWorkflow() {
+  if (!state.currentWorkflow) return;
+  try {
+    await window.workflowAPI.updateWorkflow(state.currentWorkflow.id, state.currentWorkflow);
+    editorState.isDirty = false;
+    const index = state.workflows.findIndex(w => w.id === state.currentWorkflow.id);
+    if (index !== -1) state.workflows[index] = { ...state.currentWorkflow };
+    showToast('success', 'Saved', `"${state.currentWorkflow.name || 'Workflow'}" saved`);
+  } catch (error) {
+    console.error('Failed to save workflow:', error);
+    showToast('error', 'Error', 'Failed to save workflow');
+  }
 }
 
 /**
