@@ -27,6 +27,7 @@ class WorkflowExecutor extends EventEmitter {
     this.shouldStop = false;
     this.dryRun = false;
     this.lastDetection = null;
+    this.clickAnchors = new Map();
   }
 
   async execute(workflow, options = {}) {
@@ -52,6 +53,7 @@ class WorkflowExecutor extends EventEmitter {
     this.isPaused = false;
     this.shouldStop = false;
     this.dryRun = options.dryRun || false;
+    this.clickAnchors.clear();
 
     console.log(`[Executor] Starting workflow: ${workflow.name}`);
     console.log(`[Executor] Actions: ${workflow.actions?.length || 0}, Loops: ${workflow.loopCount || 1}, DryRun: ${this.dryRun}`);
@@ -225,6 +227,15 @@ class WorkflowExecutor extends EventEmitter {
         x: this.lastDetection.x + (action.offsetX || 0),
         y: this.lastDetection.y + (action.offsetY || 0)
       };
+    } else {
+      // No explicit position — anchor to cursor position at first execution
+      // so jitter doesn't drift across loop iterations
+      const anchorKey = this.currentActionIndex;
+      if (!this.clickAnchors.has(anchorKey)) {
+        const pos = await this.mouseController.getPosition();
+        this.clickAnchors.set(anchorKey, { x: pos.x, y: pos.y });
+      }
+      options.position = { ...this.clickAnchors.get(anchorKey) };
     }
 
     await this.mouseController.click(options);
@@ -459,6 +470,8 @@ class WorkflowExecutor extends EventEmitter {
   resume() {
     if (this.state === EXECUTION_STATES.PAUSED) {
       this.isPaused = false;
+      // Clear click anchors so cursor position is re-captured after user may have moved it
+      this.clickAnchors.clear();
       this.setState(EXECUTION_STATES.RUNNING);
       this.emit('workflow:resumed');
     }
