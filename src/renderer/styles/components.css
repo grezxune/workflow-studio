@@ -1565,8 +1565,148 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 /* Images View */
-.images-content {
+.images-layout {
+  display: flex;
+  gap: var(--space-4);
   margin-top: var(--space-4);
+  min-height: 300px;
+}
+
+.images-sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-color);
+  padding-right: var(--space-3);
+}
+
+.images-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.images-content {
+  margin-top: 0;
+}
+
+/* Folder List */
+.folder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.folder-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  transition: background var(--transition-fast), color var(--transition-fast);
+  user-select: none;
+  position: relative;
+}
+
+.folder-item:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.folder-item.active {
+  background: var(--color-primary-500);
+  color: white;
+}
+
+.folder-item.active:hover {
+  background: var(--color-primary-600);
+}
+
+.folder-item.drag-over {
+  background: var(--color-primary-500);
+  color: white;
+  outline: 2px dashed var(--color-primary-300);
+  outline-offset: -2px;
+}
+
+.folder-item .folder-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.folder-item .folder-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-item .folder-count {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.folder-item.active .folder-count {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.folder-item .folder-actions {
+  display: none;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.folder-item:hover .folder-actions {
+  display: flex;
+}
+
+.folder-item:hover .folder-count {
+  display: none;
+}
+
+.folder-item .folder-actions button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  color: inherit;
+  opacity: 0.6;
+  border-radius: 3px;
+}
+
+.folder-item .folder-actions button:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.folder-item.active .folder-actions button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.folder-rename-input {
+  width: 100%;
+  background: var(--bg-primary);
+  border: 1px solid var(--color-primary-500);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  padding: 1px 4px;
+  outline: none;
+}
+
+.folder-separator {
+  height: 1px;
+  background: var(--border-color);
+  margin: var(--space-2) 0;
+}
+
+/* Draggable image card in gallery */
+.image-gallery-item.dragging {
+  opacity: 0.4;
 }
 
 /* Image Gallery */

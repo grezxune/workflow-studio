@@ -346,6 +346,28 @@ function registerDetectionHandlers(detection) {
     return storage.saveImage(id, Buffer.from(buffer));
   });
 
+  // Image folder operations (virtual/metadata-only)
+  ipcMain.handle('images:get-folders', async () => {
+    return storage.getImageFolders();
+  });
+
+  ipcMain.handle('images:create-folder', async (event, name) => {
+    return storage.createImageFolder(name);
+  });
+
+  ipcMain.handle('images:rename-folder', async (event, { oldName, newName }) => {
+    return storage.renameImageFolder(oldName, newName);
+  });
+
+  ipcMain.handle('images:delete-folder', async (event, name) => {
+    return storage.deleteImageFolder(name);
+  });
+
+  ipcMain.handle('images:move-to-folder', async (event, { imageId, folder }) => {
+    storage.moveImageToFolder(imageId, folder);
+    return { success: true };
+  });
+
   ipcMain.handle('detection:clear-template-cache', async (event, imageId) => {
     try {
       const detection = getDetectionService();

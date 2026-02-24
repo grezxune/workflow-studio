@@ -235,6 +235,22 @@ contextBridge.exposeInMainWorld('workflowAPI', {
   clearTemplateCache: (imageId) =>
     ipcRenderer.invoke('detection:clear-template-cache', imageId),
 
+  // Image folders (virtual/metadata)
+  getImageFolders: () =>
+    ipcRenderer.invoke('images:get-folders'),
+
+  createImageFolder: (name) =>
+    ipcRenderer.invoke('images:create-folder', name),
+
+  renameImageFolder: (oldName, newName) =>
+    ipcRenderer.invoke('images:rename-folder', { oldName, newName }),
+
+  deleteImageFolder: (name) =>
+    ipcRenderer.invoke('images:delete-folder', name),
+
+  moveImageToFolder: (imageId, folder) =>
+    ipcRenderer.invoke('images:move-to-folder', { imageId, folder }),
+
   // ==================== SAFETY ====================
 
   setPanicHotkey: (hotkey) =>

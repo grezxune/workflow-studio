@@ -2162,12 +2162,38 @@ async function loadImageOptions(selectId, selectedId) {
   try {
     const images = await window.workflowAPI.getImages();
     select.innerHTML = '<option value="">Select image...</option>';
+
+    // Group by folder
+    const uncategorized = images.filter(i => !i.folder);
+    const folderMap = {};
     images.forEach(img => {
+      if (img.folder) {
+        if (!folderMap[img.folder]) folderMap[img.folder] = [];
+        folderMap[img.folder].push(img);
+      }
+    });
+
+    // Render uncategorized first
+    uncategorized.forEach(img => {
       const option = document.createElement('option');
       option.value = img.id;
       option.textContent = img.id;
       if (img.id === selectedId) option.selected = true;
       select.appendChild(option);
+    });
+
+    // Render each folder as an optgroup
+    Object.keys(folderMap).sort().forEach(folder => {
+      const group = document.createElement('optgroup');
+      group.label = folder;
+      folderMap[folder].forEach(img => {
+        const option = document.createElement('option');
+        option.value = img.id;
+        option.textContent = img.id;
+        if (img.id === selectedId) option.selected = true;
+        group.appendChild(option);
+      });
+      select.appendChild(group);
     });
   } catch (error) {
     console.error('Failed to load images:', error);

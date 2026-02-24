@@ -535,11 +535,83 @@ class StorageService {
 
   getAllImages() {
     const files = fs.readdirSync(this.imagesDir).filter(f => f.endsWith('.png'));
-    return files.map(f => ({
-      id: path.basename(f, '.png'),
-      path: path.join(this.imagesDir, f),
-      filename: f
-    }));
+    const folderMap = this.getImageFolderMap();
+    return files.map(f => {
+      const id = path.basename(f, '.png');
+      return {
+        id,
+        path: path.join(this.imagesDir, f),
+        filename: f,
+        folder: folderMap[id] || null
+      };
+    });
+  }
+
+  // ==================== IMAGE FOLDERS (virtual, metadata-only) ====================
+
+  getImageFolders() {
+    return this.store.get('imageFolders', []);
+  }
+
+  createImageFolder(name) {
+    const folders = this.getImageFolders();
+    if (folders.includes(name)) {
+      throw new Error(`Folder "${name}" already exists`);
+    }
+    folders.push(name);
+    folders.sort((a, b) => a.localeCompare(b));
+    this.store.set('imageFolders', folders);
+    return folders;
+  }
+
+  renameImageFolder(oldName, newName) {
+    const folders = this.getImageFolders();
+    const idx = folders.indexOf(oldName);
+    if (idx === -1) throw new Error(`Folder "${oldName}" not found`);
+    if (folders.includes(newName)) throw new Error(`Folder "${newName}" already exists`);
+    folders[idx] = newName;
+    folders.sort((a, b) => a.localeCompare(b));
+    this.store.set('imageFolders', folders);
+
+    // Update all images in the old folder to the new folder name
+    const map = this.getImageFolderMap();
+    for (const [imageId, folder] of Object.entries(map)) {
+      if (folder === oldName) map[imageId] = newName;
+    }
+    this.store.set('imageFolderMap', map);
+    return folders;
+  }
+
+  deleteImageFolder(name) {
+    let folders = this.getImageFolders();
+    folders = folders.filter(f => f !== name);
+    this.store.set('imageFolders', folders);
+
+    // Unassign all images from this folder (move to root)
+    const map = this.getImageFolderMap();
+    for (const [imageId, folder] of Object.entries(map)) {
+      if (folder === name) delete map[imageId];
+    }
+    this.store.set('imageFolderMap', map);
+    return folders;
+  }
+
+  getImageFolderMap() {
+    return this.store.get('imageFolderMap', {});
+  }
+
+  setImageFolder(imageId, folderName) {
+    const map = this.getImageFolderMap();
+    if (folderName === null || folderName === '') {
+      delete map[imageId];
+    } else {
+      map[imageId] = folderName;
+    }
+    this.store.set('imageFolderMap', map);
+  }
+
+  moveImageToFolder(imageId, folderName) {
+    this.setImageFolder(imageId, folderName);
   }
 
   getWorkflowsDir() {
