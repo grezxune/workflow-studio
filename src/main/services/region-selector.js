@@ -6,6 +6,7 @@
 
 import { BrowserWindow, ipcMain, screen } from 'electron';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { getDetectionService } from './detection.js';
 import { getStorageService } from './storage.js';
@@ -15,8 +16,10 @@ const __dirname = path.dirname(__filename);
 
 let selectorWindow = null;
 let positionPickerWindow = null;
+let previewWindow = null;
 let resolvePromise = null;
 let rejectPromise = null;
+let previewResolve = null;
 
 /**
  * Show region selection overlay and wait for user to select a region
@@ -197,6 +200,68 @@ function closePositionPickerWindow() {
 }
 
 /**
+ * Close the preview window
+ */
+function closePreviewWindow() {
+  if (previewWindow && !previewWindow.isDestroyed()) {
+    previewWindow.close();
+    previewWindow = null;
+  }
+}
+
+/**
+ * Show a preview window with the captured image and return user decision
+ * @param {string} imagePath - Path to the captured image file
+ * @param {{x,y,width,height}} region - The captured region dimensions
+ * @param {string} defaultName - Default name for the image
+ * @returns {Promise<{decision: 'confirm'|'redo'|'cancel', name?: string}>}
+ */
+function showCapturePreview(imagePath, region, defaultName) {
+  return new Promise((resolve) => {
+    previewResolve = resolve;
+
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: screenW, height: screenH } = primaryDisplay.workAreaSize;
+    const winW = Math.min(800, screenW - 100);
+    const winH = Math.min(600, screenH - 100);
+
+    previewWindow = new BrowserWindow({
+      width: winW,
+      height: winH,
+      x: Math.round((screenW - winW) / 2),
+      y: Math.round((screenH - winH) / 2),
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false
+      }
+    });
+
+    previewWindow.loadFile(path.join(__dirname, '../../renderer/capture-preview.html'));
+
+    previewWindow.webContents.once('did-finish-load', () => {
+      previewWindow.webContents.send('preview-image-data', {
+        imagePath: imagePath.replace(/\\/g, '/'),
+        region,
+        defaultName
+      });
+    });
+
+    previewWindow.on('closed', () => {
+      previewWindow = null;
+      if (previewResolve) {
+        previewResolve({ decision: 'cancel' });
+        previewResolve = null;
+      }
+    });
+  });
+}
+
+/**
  * Initialize IPC handlers for region selection
  */
 export function initRegionSelectorIPC() {
@@ -267,29 +332,81 @@ export function initRegionSelectorIPC() {
     }
   });
 
-  // Handler to capture a region and save as template
+  // Preview window handlers
+  ipcMain.on('capture-preview-confirm', (event, data) => {
+    closePreviewWindow();
+    if (previewResolve) {
+      previewResolve({ decision: 'confirm', name: data?.name });
+      previewResolve = null;
+    }
+  });
+
+  ipcMain.on('capture-preview-redo', () => {
+    closePreviewWindow();
+    if (previewResolve) {
+      previewResolve({ decision: 'redo' });
+      previewResolve = null;
+    }
+  });
+
+  ipcMain.on('capture-preview-cancel', () => {
+    closePreviewWindow();
+    if (previewResolve) {
+      previewResolve({ decision: 'cancel' });
+      previewResolve = null;
+    }
+  });
+
+  // Handler to capture a region and save as template (with preview/redo loop)
   ipcMain.handle('capture-region-template', async (event, options = {}) => {
     try {
-      // First, let user select a region
-      const region = await selectRegion();
-
-      if (!region) {
-        return { success: false, cancelled: true };
-      }
-
-      // Capture the selected region
       const detection = getDetectionService();
-      const storage = getStorageService();
 
-      const imageId = options.name || `template-${Date.now()}`;
-      const result = await detection.captureTemplate(region, imageId);
+      while (true) {
+        // Let user select a region
+        const region = await selectRegion();
 
-      return {
-        success: true,
-        imageId: result.id,
-        path: result.path,
-        region: region
-      };
+        if (!region) {
+          return { success: false, cancelled: true };
+        }
+
+        // Small delay to ensure overlay is fully gone before capturing
+        await new Promise(r => setTimeout(r, 150));
+
+        // Capture the selected region to a temp file for preview
+        const tempId = `preview-temp-${Date.now()}`;
+        const result = await detection.captureTemplate(region, tempId);
+
+        // Show preview and wait for user decision
+        const defaultName = options.name || `template-${Date.now()}`;
+        const { decision, name: userChosenName } = await showCapturePreview(result.path, region, defaultName);
+
+        if (decision === 'confirm') {
+          // Rename temp file to final name using user-provided name
+          const storage = getStorageService();
+          const imageId = userChosenName || defaultName;
+          const finalPath = storage.getImagePath(imageId);
+
+          if (result.path !== finalPath) {
+            fs.renameSync(result.path, finalPath);
+          }
+
+          return {
+            success: true,
+            imageId: imageId,
+            path: finalPath,
+            region: region
+          };
+        } else if (decision === 'redo') {
+          // Clean up temp file and loop again
+          try { fs.unlinkSync(result.path); } catch (e) { /* ignore */ }
+          continue;
+        } else {
+          // Cancel - clean up temp file
+          try { fs.unlinkSync(result.path); } catch (e) { /* ignore */ }
+          return { success: false, cancelled: true };
+        }
+      }
     } catch (error) {
       console.error('Region capture failed:', error);
       return { success: false, error: error.message };

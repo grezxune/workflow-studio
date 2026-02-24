@@ -50,6 +50,17 @@ class MouseController {
     }
   }
 
+  /**
+   * Clamp a point to stay within bounds { left, top, right, bottom }
+   */
+  clampToBounds(x, y, bounds) {
+    if (!bounds) return { x, y };
+    return {
+      x: Math.round(Math.max(bounds.left, Math.min(bounds.right, x))),
+      y: Math.round(Math.max(bounds.top, Math.min(bounds.bottom, y)))
+    };
+  }
+
   async moveDirectly(startX, startY, endX, endY, options = {}) {
     const targetDuration = options.duration ?? this.mouseMoveDuration;
     console.log(`[MouseController] moveDirectly from (${startX}, ${startY}) to (${endX}, ${endY}), targetDuration=${targetDuration}ms, mouseMoveDuration=${this.mouseMoveDuration}ms`);
@@ -125,10 +136,18 @@ class MouseController {
   async moveWithOvershoot(startX, startY, endX, endY, options = {}) {
     const distance = Math.hypot(endX - startX, endY - startY);
     const overshootDist = calculateOvershoot(distance, this.overshootConfig);
+    const bounds = options.bounds;
 
     const angle = Math.atan2(endY - startY, endX - startX);
-    const overshootX = Math.round(endX + Math.cos(angle) * overshootDist);
-    const overshootY = Math.round(endY + Math.sin(angle) * overshootDist);
+    let overshootX = Math.round(endX + Math.cos(angle) * overshootDist);
+    let overshootY = Math.round(endY + Math.sin(angle) * overshootDist);
+
+    // Clamp overshoot point to bounds if provided
+    if (bounds) {
+      const clamped = this.clampToBounds(overshootX, overshootY, bounds);
+      overshootX = clamped.x;
+      overshootY = clamped.y;
+    }
 
     // Use 80% of duration for main movement, 20% for correction
     const mainDuration = Math.round((options.duration ?? this.mouseMoveDuration) * 0.8);
@@ -152,7 +171,13 @@ class MouseController {
     const scaledCorrectionPath = this.scalePathDuration(correctionPath, corrSleepBudget);
 
     for (const point of scaledCorrectionPath) {
-      await mouse.setPosition(new Point(point.x, point.y));
+      let px = point.x, py = point.y;
+      if (bounds) {
+        const clamped = this.clampToBounds(px, py, bounds);
+        px = clamped.x;
+        py = clamped.y;
+      }
+      await mouse.setPosition(new Point(px, py));
       if (point.delay > 0) {
         await sleep(point.delay);
       }

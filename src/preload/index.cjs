@@ -226,8 +226,14 @@ contextBridge.exposeInMainWorld('workflowAPI', {
   deleteImage: (id) =>
     ipcRenderer.invoke(IPC_CHANNELS.DELETE_IMAGE, id),
 
+  renameImage: (oldId, newId) =>
+    ipcRenderer.invoke('images:rename', { oldId, newId }),
+
   saveImage: (id, buffer) =>
     ipcRenderer.invoke(IPC_CHANNELS.SAVE_IMAGE, { id, buffer }),
+
+  clearTemplateCache: (imageId) =>
+    ipcRenderer.invoke('detection:clear-template-cache', imageId),
 
   // ==================== SAFETY ====================
 
@@ -310,6 +316,9 @@ contextBridge.exposeInMainWorld('workflowAPI', {
 
   closeWindow: () =>
     ipcRenderer.invoke(IPC_CHANNELS.CLOSE_WINDOW),
+
+  restoreWindow: () =>
+    ipcRenderer.invoke('window:restore'),
 
   // ==================== PERMISSIONS ====================
 

@@ -194,6 +194,7 @@ class WorkflowExecutor extends EventEmitter {
   async performMouseMove(action) {
     let targetX = action.x;
     let targetY = action.y;
+    let imageBounds = null;
 
     // Bounding box mode: pick a random point within the bounds
     if (action.moveMode === 'bounds' && action.bounds) {
@@ -203,13 +204,41 @@ class WorkflowExecutor extends EventEmitter {
       console.log(`[Executor] Bounds (${b.x}, ${b.y}, ${b.width}x${b.height}) → random point (${targetX}, ${targetY})`);
     }
 
+    // Image mode: find image on screen and pick a random point within it
+    if (action.moveMode === 'image' && action.imageId) {
+      if (!this.detectionService) {
+        throw new Error('Detection service not available');
+      }
+
+      const result = await this.detectionService.findImage(action.imageId, {
+        confidence: action.imageConfidence || 0.9,
+        region: action.searchRegion,
+        scaleDown: action.scaleDown || false
+      });
+
+      if (result) {
+        this.lastDetection = result;
+        imageBounds = result.bounds;
+        const b = result.bounds;
+        targetX = Math.round(b.left + Math.random() * (b.right - b.left));
+        targetY = Math.round(b.top + Math.random() * (b.bottom - b.top));
+        console.log(`[Executor] Image "${action.imageId}" found at (${b.left}, ${b.top}) ${result.width}×${result.height} → random point (${targetX}, ${targetY})`);
+      } else {
+        console.log(`[Executor] Image "${action.imageId}" not found`);
+        if (action.failOnNotFound) {
+          throw new Error(`Image not found: ${action.imageId}`);
+        }
+        return;
+      }
+    }
+
     if (action.relativeToDetection && this.lastDetection) {
       targetX = this.lastDetection.x + (action.offsetX || 0);
       targetY = this.lastDetection.y + (action.offsetY || 0);
     }
 
     console.log(`[Executor] Mouse move to (${targetX}, ${targetY})${action.duration !== undefined ? ` with duration ${action.duration}ms` : ''}`);
-    await this.mouseController.moveTo(targetX, targetY, { duration: action.duration });
+    await this.mouseController.moveTo(targetX, targetY, { duration: action.duration, bounds: imageBounds });
     console.log('[Executor] Mouse move complete');
   }
 
@@ -337,18 +366,49 @@ class WorkflowExecutor extends EventEmitter {
       throw new Error('Detection service not available');
     }
 
-    const result = await this.detectionService.findImage(action.imageId, {
-      confidence: action.confidence || 0.9,
-      region: action.region
-    });
+    const pollInterval = action.pollInterval || 500;
 
-    if (result) {
-      this.lastDetection = result;
-      this.emit('detection:found', { type: 'image', result });
-    } else {
-      this.emit('detection:notfound', { type: 'image' });
-      if (action.failOnNotFound) {
-        throw new Error('Image not found');
+    while (true) {
+      const result = await this.detectionService.findImage(action.imageId, {
+        confidence: action.confidence || 0.9,
+        region: action.searchRegion || action.region,
+        scaleDown: action.scaleDown || false
+      });
+
+      if (result) {
+        this.lastDetection = result;
+        this.emit('detection:found', { type: 'image', result });
+        return;
+      }
+
+      // Image not found
+      if (!action.waitUntilFound) {
+        this.emit('detection:notfound', { type: 'image' });
+        if (action.failOnNotFound) {
+          throw new Error('Image not found');
+        }
+        return;
+      }
+
+      // Wait until found mode — keep polling
+      console.log(`[Executor] Image "${action.imageId}" not found, retrying in ${pollInterval}ms...`);
+      this.emit('detection:notfound', { type: 'image', waiting: true });
+
+      // Respect pause
+      while (this.isPaused && !this.shouldStop) {
+        await sleep(100);
+      }
+
+      if (this.shouldStop) {
+        console.log('[Executor] Stop requested during wait-until-found');
+        return;
+      }
+
+      await new Promise(r => setTimeout(r, pollInterval));
+
+      if (this.shouldStop) {
+        console.log('[Executor] Stop requested during wait-until-found');
+        return;
       }
     }
   }

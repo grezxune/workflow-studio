@@ -212,8 +212,9 @@ function updateExecutionProgress(data) {
   // Update action text
   const action = data.action;
   const actionType = ACTION_TYPES[action.type];
-  const actionName = actionType?.name || action.type;
-  executionAction.textContent = `${actionName}: ${getActionSummary(action)}`;
+  const typeName = actionType?.name || action.type;
+  const displayName = action.name ? `${typeName} (${action.name})` : typeName;
+  executionAction.textContent = `${displayName}: ${getActionSummary(action)}`;
 
   // Highlight current action in editor
   highlightCurrentAction(data.index);
@@ -423,10 +424,16 @@ function updateScheduledStopDisplay() {
   const countdownStr = formatCountdown(remaining);
   const targetStr = scheduledStopTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+  // Ensure active countdown is visible
+  const controls = document.getElementById('scheduled-stop-controls');
+  const active = document.getElementById('scheduled-stop-active');
+  if (controls) controls.classList.add('hidden');
+  if (active) active.classList.remove('hidden');
+
   // Update overlay countdown
   const countdownEl = document.getElementById('scheduled-stop-countdown');
   if (countdownEl) {
-    countdownEl.innerHTML = `${countdownStr} <span class="stop-target-time">until ${targetStr}</span>`;
+    countdownEl.innerHTML = `<span class="stop-countdown-value">${countdownStr}</span> <span class="stop-target-time">until ${targetStr}</span>`;
   }
 
   // Update floating bar native window

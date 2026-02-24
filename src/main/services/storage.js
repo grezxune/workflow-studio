@@ -511,6 +511,19 @@ class StorageService {
     return path.join(this.imagesDir, `${id}.png`);
   }
 
+  renameImage(oldId, newId) {
+    const oldPath = this.getImagePath(oldId);
+    const newPath = this.getImagePath(newId);
+    if (!fs.existsSync(oldPath)) {
+      throw new Error(`Image not found: ${oldId}`);
+    }
+    if (fs.existsSync(newPath)) {
+      throw new Error(`An image named "${newId}" already exists`);
+    }
+    fs.renameSync(oldPath, newPath);
+    return { id: newId, path: newPath };
+  }
+
   deleteImage(id) {
     const filePath = this.getImagePath(id);
     if (fs.existsSync(filePath)) {

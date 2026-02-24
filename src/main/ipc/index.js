@@ -338,8 +338,22 @@ function registerDetectionHandlers(detection) {
     return storage.deleteImage(id);
   });
 
+  ipcMain.handle('images:rename', async (event, { oldId, newId }) => {
+    return storage.renameImage(oldId, newId);
+  });
+
   ipcMain.handle(IPC_CHANNELS.SAVE_IMAGE, async (event, { id, buffer }) => {
     return storage.saveImage(id, Buffer.from(buffer));
+  });
+
+  ipcMain.handle('detection:clear-template-cache', async (event, imageId) => {
+    try {
+      const detection = getDetectionService();
+      detection.clearTemplateCache(imageId);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
   });
 }
 
@@ -401,6 +415,15 @@ function registerUtilityHandlers() {
       } else {
         mainWindow.maximize();
       }
+    }
+    return { success: true };
+  });
+
+  ipcMain.handle('window:restore', async () => {
+    if (mainWindow) {
+      mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
     }
     return { success: true };
   });

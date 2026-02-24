@@ -61,9 +61,6 @@ function setupSettingsEvents() {
   // Clear history
   document.getElementById('btn-clear-history')?.addEventListener('click', clearExecutionHistory);
 
-  // Capture template
-  document.getElementById('btn-capture-template')?.addEventListener('click', captureNewTemplate);
-
   // Check for updates
   document.getElementById('btn-check-updates')?.addEventListener('click', checkForUpdates);
 
@@ -147,8 +144,6 @@ async function loadSettingsIntoUI() {
   // Mouse movement duration
   mouseMoveDurationInput.value = state.settings.mouseMoveDuration ?? 250;
 
-  // Load image gallery
-  loadImageGallery();
 }
 
 /**
@@ -315,91 +310,6 @@ async function saveSettings(updates) {
   } catch (error) {
     console.error('Failed to save settings:', error);
     showToast('error', 'Error', 'Failed to save settings');
-  }
-}
-
-/**
- * Load and render image gallery
- */
-async function loadImageGallery() {
-  const gallery = document.getElementById('image-gallery');
-  if (!gallery) return;
-
-  try {
-    const images = await window.workflowAPI.getImages();
-
-    if (!images || images.length === 0) {
-      gallery.innerHTML = '';
-      return;
-    }
-
-    gallery.innerHTML = images.map(img => `
-      <div class="image-gallery-item" data-id="${img.id}">
-        <div style="width:100%;height:100%;background:var(--bg-tertiary);display:flex;align-items:center;justify-content:center;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:32px;height:32px;color:var(--text-tertiary)">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-            <circle cx="8.5" cy="8.5" r="1.5"/>
-            <polyline points="21 15 16 10 5 21"/>
-          </svg>
-        </div>
-        <span class="image-name">${img.id}</span>
-        <button class="delete-image" data-delete="${img.id}" title="Delete">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
-            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
-      </div>
-    `).join('');
-
-    // Add delete handlers
-    gallery.querySelectorAll('[data-delete]').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const imageId = btn.dataset.delete;
-        try {
-          await window.workflowAPI.deleteImage(imageId);
-          loadImageGallery();
-          showToast('success', 'Deleted', 'Image template deleted');
-        } catch (error) {
-          showToast('error', 'Error', 'Failed to delete image');
-        }
-      });
-    });
-  } catch (error) {
-    console.error('Failed to load images:', error);
-    gallery.innerHTML = '<p style="color: var(--text-tertiary);">Failed to load images</p>';
-  }
-}
-
-/**
- * Capture a new image template with region selection
- */
-async function captureNewTemplate() {
-  try {
-    // Minimize the main window first
-    await window.workflowAPI.minimizeWindow();
-
-    // Small delay to ensure window is minimized
-    await new Promise(r => setTimeout(r, 300));
-
-    // Open region selection overlay
-    const result = await window.workflowAPI.captureRegionTemplate();
-
-    if (result.cancelled) {
-      showToast('info', 'Cancelled', 'Region capture cancelled');
-      return;
-    }
-
-    if (!result.success) {
-      showToast('error', 'Error', result.error || 'Failed to capture region');
-      return;
-    }
-
-    showToast('success', 'Captured', `Image template saved as ${result.imageId}`);
-    loadImageGallery();
-  } catch (error) {
-    console.error('Capture failed:', error);
-    showToast('error', 'Error', 'Failed to capture image');
   }
 }
 

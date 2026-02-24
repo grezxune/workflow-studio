@@ -39,6 +39,7 @@ async function initApp() {
   initWorkflowsView();
   initEditorView();
   initHotkeysView();
+  initImagesView();
   initSettingsView();
   
   // Initialize quick record mode
@@ -89,6 +90,7 @@ function cacheElements() {
     workflows: document.getElementById('view-workflows'),
     editor: document.getElementById('view-editor'),
     hotkeys: document.getElementById('view-hotkeys'),
+    images: document.getElementById('view-images'),
     settings: document.getElementById('view-settings')
   };
   elements.statusIndicator = document.getElementById('status-indicator');

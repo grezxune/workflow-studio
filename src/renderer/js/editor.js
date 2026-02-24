@@ -496,7 +496,7 @@ function renderInlineChildren(action, index, branches) {
         childEl.innerHTML = `
           <span class="inline-child-handle" title="Drag to reorder">⋮⋮</span>
           <span class="inline-child-num">${ci + 1}</span>
-          <span class="inline-child-name">${ACTION_TYPES[childAction.type]?.name || childAction.type}</span>
+          <span class="inline-child-name">${childAction.name ? escapeHtml(childAction.name) : (ACTION_TYPES[childAction.type]?.name || childAction.type)}</span>
           <span class="inline-child-summary">${getActionSummary(childAction)}</span>
           <div class="inline-child-buttons">
             <button class="btn btn-icon btn-sm inline-child-edit" title="Edit">
@@ -688,6 +688,9 @@ function getActionColor(type, alpha = 1) {
 function getCompactLabel(action) {
   switch (action.type) {
     case 'mouse_move':
+      if (action.moveMode === 'image' && action.imageId) {
+        return `🖼${action.imageId.substring(0, 6)}`;
+      }
       if (action.moveMode === 'bounds' && action.bounds) {
         return `□${action.bounds.x},${action.bounds.y}`;
       }
@@ -726,6 +729,9 @@ function getCompactLabel(action) {
 function getActionSummary(action) {
   switch (action.type) {
     case 'mouse_move':
+      if (action.moveMode === 'image' && action.imageId) {
+        return `Move to image "${action.imageId}"`;
+      }
       if (action.moveMode === 'bounds' && action.bounds) {
         const b = action.bounds;
         return `Random in (${b.x}, ${b.y}) ${b.width}×${b.height}`;
@@ -1097,17 +1103,22 @@ function renderConfigFields(action, index, targetConfigBody, saveCallback) {
   switch (action.type) {
     case 'mouse_move':
       action.moveMode = action.moveMode || 'point';
-      const isPointMode = action.moveMode === 'point';
+      const modeHints = {
+        point: 'Move to an exact position',
+        bounds: 'Move to a random point within a rectangular area',
+        image: 'Find an image on screen and move to a random point within it'
+      };
       configBody.innerHTML = nameFieldHtml + `
         <div class="config-field">
           <label>Move Mode</label>
           <div class="toggle-group">
-            <button class="toggle-btn ${isPointMode ? 'active' : ''}" data-mode="point">Point</button>
-            <button class="toggle-btn ${!isPointMode ? 'active' : ''}" data-mode="bounds">Bounding Box</button>
+            <button class="toggle-btn ${action.moveMode === 'point' ? 'active' : ''}" data-mode="point">Point</button>
+            <button class="toggle-btn ${action.moveMode === 'bounds' ? 'active' : ''}" data-mode="bounds">Bounding Box</button>
+            <button class="toggle-btn ${action.moveMode === 'image' ? 'active' : ''}" data-mode="image">Image</button>
           </div>
-          <p class="config-field-hint">${isPointMode ? 'Move to an exact position' : 'Move to a random point within a rectangular area'}</p>
+          <p class="config-field-hint">${modeHints[action.moveMode]}</p>
         </div>
-        <div id="point-fields" ${!isPointMode ? 'style="display:none"' : ''}>
+        <div id="point-fields" ${action.moveMode !== 'point' ? 'style="display:none"' : ''}>
           <div class="config-field">
             <label>X Position</label>
             <input type="number" id="config-x" value="${action.x || 0}">
@@ -1130,7 +1141,7 @@ function renderConfigFields(action, index, targetConfigBody, saveCallback) {
             <p class="config-field-hint">Click to select position with your mouse</p>
           </div>
         </div>
-        <div id="bounds-fields" ${isPointMode ? 'style="display:none"' : ''}>
+        <div id="bounds-fields" ${action.moveMode !== 'bounds' ? 'style="display:none"' : ''}>
           <div class="config-field">
             <label>Top-Left X</label>
             <input type="number" id="config-bounds-x" value="${action.bounds?.x || 0}">
@@ -1157,6 +1168,79 @@ function renderConfigFields(action, index, targetConfigBody, saveCallback) {
               Pick Region from Screen
             </button>
             <p class="config-field-hint">Click and drag to select a rectangular region</p>
+          </div>
+        </div>
+        <div id="image-fields" ${action.moveMode !== 'image' ? 'style="display:none"' : ''}>
+          <div class="config-field">
+            <label>Image Template</label>
+            <select id="config-move-image-id">
+              <option value="">Select image...</option>
+            </select>
+          </div>
+          <div class="config-field">
+            <button class="btn btn-secondary" id="btn-capture-move-image">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+              </svg>
+              Capture New Image
+            </button>
+          </div>
+          <div class="config-field">
+            <label>Match Confidence: <span id="move-conf-value">${Math.round((action.imageConfidence || 0.9) * 100)}%</span></label>
+            <input type="range" id="config-move-confidence" min="50" max="100" value="${Math.round((action.imageConfidence || 0.9) * 100)}">
+            <p class="config-field-hint">Higher values require closer match</p>
+          </div>
+          <div class="config-field">
+            <label class="checkbox-label">
+              <input type="checkbox" id="config-move-search-region-enabled" ${action.searchRegion ? 'checked' : ''}>
+              Limit search region
+            </label>
+            <p class="config-field-hint">Only search a portion of the screen (much faster)</p>
+          </div>
+          <div id="move-search-region-fields" ${!action.searchRegion ? 'style="display:none"' : ''}>
+            <div class="config-field">
+              <button class="btn btn-secondary" id="btn-pick-move-search-region">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                  <line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>
+                  <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
+                </svg>
+                Pick Search Region
+              </button>
+            </div>
+            <div class="config-field config-row" id="move-search-region-display" ${!action.searchRegion ? 'style="display:none"' : ''}>
+              <div class="config-col">
+                <label>X</label>
+                <input type="number" id="config-msr-x" value="${action.searchRegion?.x ?? 0}" min="0">
+              </div>
+              <div class="config-col">
+                <label>Y</label>
+                <input type="number" id="config-msr-y" value="${action.searchRegion?.y ?? 0}" min="0">
+              </div>
+              <div class="config-col">
+                <label>W</label>
+                <input type="number" id="config-msr-w" value="${action.searchRegion?.width ?? 200}" min="1">
+              </div>
+              <div class="config-col">
+                <label>H</label>
+                <input type="number" id="config-msr-h" value="${action.searchRegion?.height ?? 200}" min="1">
+              </div>
+            </div>
+          </div>
+          <div class="config-field">
+            <label class="checkbox-label">
+              <input type="checkbox" id="config-move-scale-down" ${action.scaleDown ? 'checked' : ''}>
+              Scale down for speed
+            </label>
+            <p class="config-field-hint">Reduces resolution before matching (faster but slightly less precise)</p>
+          </div>
+          <div class="config-field">
+            <label class="checkbox-label">
+              <input type="checkbox" id="config-move-fail-not-found" ${action.failOnNotFound ? 'checked' : ''}>
+              Fail if image not found
+            </label>
           </div>
         </div>
         <div class="config-field">
@@ -1232,6 +1316,75 @@ function renderConfigFields(action, index, targetConfigBody, saveCallback) {
           document.getElementById('config-bounds-h').value = region.height;
           save();
         });
+      });
+
+      // Image mode fields
+      loadImageOptions('config-move-image-id', action.imageId);
+
+      document.getElementById('config-move-image-id').addEventListener('change', (e) => {
+        action.imageId = e.target.value || null;
+        save();
+      });
+
+      document.getElementById('btn-capture-move-image').addEventListener('click', () => {
+        captureImageTemplate((imageId) => {
+          action.imageId = imageId;
+          loadImageOptions('config-move-image-id', imageId);
+          save();
+        });
+      });
+
+      document.getElementById('config-move-confidence').addEventListener('input', (e) => {
+        const val = parseInt(e.target.value);
+        document.getElementById('move-conf-value').textContent = val + '%';
+        action.imageConfidence = val / 100;
+        save();
+      });
+
+      document.getElementById('config-move-fail-not-found').addEventListener('change', (e) => {
+        action.failOnNotFound = e.target.checked;
+        save();
+      });
+
+      // Mouse move search region
+      document.getElementById('config-move-search-region-enabled').addEventListener('change', (e) => {
+        const fields = document.getElementById('move-search-region-fields');
+        if (e.target.checked) {
+          action.searchRegion = action.searchRegion || { x: 0, y: 0, width: 200, height: 200 };
+          fields.style.display = '';
+          document.getElementById('move-search-region-display').style.display = '';
+        } else {
+          action.searchRegion = null;
+          fields.style.display = 'none';
+        }
+        save();
+      });
+
+      document.getElementById('btn-pick-move-search-region').addEventListener('click', async () => {
+        await pickRegionFromScreen((region) => {
+          action.searchRegion = { x: region.x, y: region.y, width: region.width, height: region.height };
+          document.getElementById('config-msr-x').value = region.x;
+          document.getElementById('config-msr-y').value = region.y;
+          document.getElementById('config-msr-w').value = region.width;
+          document.getElementById('config-msr-h').value = region.height;
+          document.getElementById('move-search-region-display').style.display = '';
+          save();
+        });
+      });
+
+      ['config-msr-x', 'config-msr-y', 'config-msr-w', 'config-msr-h'].forEach(id => {
+        document.getElementById(id)?.addEventListener('change', (e) => {
+          action.searchRegion = action.searchRegion || { x: 0, y: 0, width: 200, height: 200 };
+          const key = { 'config-msr-x': 'x', 'config-msr-y': 'y', 'config-msr-w': 'width', 'config-msr-h': 'height' }[id];
+          action.searchRegion[key] = Math.max(0, parseInt(e.target.value) || 0);
+          save();
+        });
+      });
+
+      // Mouse move scale down
+      document.getElementById('config-move-scale-down').addEventListener('change', (e) => {
+        action.scaleDown = e.target.checked;
+        save();
       });
 
       document.getElementById('config-duration').addEventListener('change', (e) => {
@@ -1680,7 +1833,63 @@ function renderImageDetectConfig(configBody, action, index, nameFieldHtml = '', 
     </div>
     <div class="config-field">
       <label class="checkbox-label">
-        <input type="checkbox" id="config-fail-not-found" ${action.failOnNotFound ? 'checked' : ''}>
+        <input type="checkbox" id="config-wait-until-found" ${action.waitUntilFound ? 'checked' : ''}>
+        Wait until found
+      </label>
+      <p class="config-field-hint">Keep checking until the image appears on screen</p>
+    </div>
+    <div class="config-field" id="poll-interval-field" ${!action.waitUntilFound ? 'style="display:none"' : ''}>
+      <label>Check interval (ms)</label>
+      <input type="number" id="config-poll-interval" min="100" max="30000" value="${action.pollInterval || 500}" placeholder="500">
+      <p class="config-field-hint">How often to re-check for the image</p>
+    </div>
+    <div class="config-field">
+      <label class="checkbox-label">
+        <input type="checkbox" id="config-search-region-enabled" ${action.searchRegion ? 'checked' : ''}>
+        Limit search region
+      </label>
+      <p class="config-field-hint">Only search a portion of the screen (much faster)</p>
+    </div>
+    <div id="search-region-fields" ${!action.searchRegion ? 'style="display:none"' : ''}>
+      <div class="config-field">
+        <button class="btn btn-secondary" id="btn-pick-search-region">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>
+            <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
+          </svg>
+          Pick Search Region
+        </button>
+      </div>
+      <div class="config-field config-row" id="search-region-display" ${!action.searchRegion ? 'style="display:none"' : ''}>
+        <div class="config-col">
+          <label>X</label>
+          <input type="number" id="config-sr-x" value="${action.searchRegion?.x ?? 0}" min="0">
+        </div>
+        <div class="config-col">
+          <label>Y</label>
+          <input type="number" id="config-sr-y" value="${action.searchRegion?.y ?? 0}" min="0">
+        </div>
+        <div class="config-col">
+          <label>W</label>
+          <input type="number" id="config-sr-w" value="${action.searchRegion?.width ?? 200}" min="1">
+        </div>
+        <div class="config-col">
+          <label>H</label>
+          <input type="number" id="config-sr-h" value="${action.searchRegion?.height ?? 200}" min="1">
+        </div>
+      </div>
+    </div>
+    <div class="config-field">
+      <label class="checkbox-label">
+        <input type="checkbox" id="config-scale-down" ${action.scaleDown ? 'checked' : ''}>
+        Scale down for speed
+      </label>
+      <p class="config-field-hint">Reduces resolution before matching (faster but slightly less precise)</p>
+    </div>
+    <div class="config-field">
+      <label class="checkbox-label">
+        <input type="checkbox" id="config-fail-not-found" ${action.failOnNotFound ? 'checked' : ''} ${action.waitUntilFound ? 'disabled' : ''}>
         Fail if not found
       </label>
     </div>
@@ -1725,6 +1934,24 @@ function renderImageDetectConfig(configBody, action, index, nameFieldHtml = '', 
     save();
   });
 
+  document.getElementById('config-wait-until-found').addEventListener('change', (e) => {
+    action.waitUntilFound = e.target.checked;
+    const pollField = document.getElementById('poll-interval-field');
+    const failCheckbox = document.getElementById('config-fail-not-found');
+    if (pollField) pollField.style.display = e.target.checked ? '' : 'none';
+    if (failCheckbox) failCheckbox.disabled = e.target.checked;
+    if (e.target.checked) {
+      action.failOnNotFound = false;
+      if (failCheckbox) failCheckbox.checked = false;
+    }
+    save();
+  });
+
+  document.getElementById('config-poll-interval').addEventListener('change', (e) => {
+    action.pollInterval = Math.max(100, parseInt(e.target.value) || 500);
+    save();
+  });
+
   document.getElementById('config-fail-not-found').addEventListener('change', (e) => {
     action.failOnNotFound = e.target.checked;
     save();
@@ -1732,6 +1959,47 @@ function renderImageDetectConfig(configBody, action, index, nameFieldHtml = '', 
 
   document.getElementById('config-img-continue-error').addEventListener('change', (e) => {
     action.continueOnError = e.target.checked;
+    save();
+  });
+
+  // Search region
+  document.getElementById('config-search-region-enabled').addEventListener('change', (e) => {
+    const fields = document.getElementById('search-region-fields');
+    if (e.target.checked) {
+      action.searchRegion = action.searchRegion || { x: 0, y: 0, width: 200, height: 200 };
+      fields.style.display = '';
+      document.getElementById('search-region-display').style.display = '';
+    } else {
+      action.searchRegion = null;
+      fields.style.display = 'none';
+    }
+    save();
+  });
+
+  document.getElementById('btn-pick-search-region').addEventListener('click', async () => {
+    await pickRegionFromScreen((region) => {
+      action.searchRegion = { x: region.x, y: region.y, width: region.width, height: region.height };
+      document.getElementById('config-sr-x').value = region.x;
+      document.getElementById('config-sr-y').value = region.y;
+      document.getElementById('config-sr-w').value = region.width;
+      document.getElementById('config-sr-h').value = region.height;
+      document.getElementById('search-region-display').style.display = '';
+      save();
+    });
+  });
+
+  ['config-sr-x', 'config-sr-y', 'config-sr-w', 'config-sr-h'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', (e) => {
+      action.searchRegion = action.searchRegion || { x: 0, y: 0, width: 200, height: 200 };
+      const key = { 'config-sr-x': 'x', 'config-sr-y': 'y', 'config-sr-w': 'width', 'config-sr-h': 'height' }[id];
+      action.searchRegion[key] = Math.max(0, parseInt(e.target.value) || 0);
+      save();
+    });
+  });
+
+  // Scale down
+  document.getElementById('config-scale-down').addEventListener('change', (e) => {
+    action.scaleDown = e.target.checked;
     save();
   });
 
@@ -1934,8 +2202,11 @@ async function captureImageTemplate(callback) {
     // Small delay to ensure window is minimized
     await new Promise(r => setTimeout(r, 300));
 
-    // Open region selection overlay
+    // Open region selection overlay (includes preview/confirm/redo loop)
     const result = await window.workflowAPI.captureRegionTemplate();
+
+    // Restore the main window
+    await window.workflowAPI.restoreWindow();
 
     if (result.cancelled) {
       showToast('info', 'Cancelled', 'Region capture cancelled');
@@ -1952,6 +2223,8 @@ async function captureImageTemplate(callback) {
   } catch (error) {
     console.error('Image capture failed:', error);
     showToast('error', 'Capture Failed', error.message);
+    // Restore window even on error
+    try { await window.workflowAPI.restoreWindow(); } catch (e) { /* ignore */ }
   }
 }
 
@@ -1983,7 +2256,7 @@ function openNestedActionsEditor(parentAction, actionsKey, title, parentIndex) {
             <div class="nested-action-item" data-index="${i}" draggable="true">
               <span class="nested-drag-handle">⋮⋮</span>
               <span class="nested-num">${i + 1}</span>
-              <span class="nested-name">${ACTION_TYPES[action.type]?.name || action.type}</span>
+              <span class="nested-name">${action.name ? escapeHtml(action.name) : (ACTION_TYPES[action.type]?.name || action.type)}</span>
               <span class="nested-summary">${getActionSummary(action)}</span>
               <button class="btn btn-icon btn-sm" data-edit="${i}" title="Edit">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
@@ -2023,7 +2296,7 @@ function openNestedActionsEditor(parentAction, actionsKey, title, parentIndex) {
                   return `
                     <div class="nested-source-item" data-workflow-index="${i}">
                       <span class="nested-num">${i + 1}</span>
-                      <span class="nested-name">${ACTION_TYPES[action.type]?.name || action.type}</span>
+                      <span class="nested-name">${action.name ? escapeHtml(action.name) : (ACTION_TYPES[action.type]?.name || action.type)}</span>
                       <span class="nested-summary">${getActionSummary(action)}</span>
                       <div class="nested-source-btns">
                         <button class="btn btn-secondary btn-sm" data-copy-index="${i}" title="Copy into this branch">Copy</button>
