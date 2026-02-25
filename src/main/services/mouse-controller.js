@@ -149,9 +149,13 @@ class MouseController {
       overshootY = clamped.y;
     }
 
-    // Use 80% of duration for main movement, 20% for correction
-    const mainDuration = Math.round((options.duration ?? this.mouseMoveDuration) * 0.8);
-    const correctionDuration = Math.round((options.duration ?? this.mouseMoveDuration) * 0.2);
+    // Scale durations proportionally to distance so both legs move at the same speed
+    const totalDuration = options.duration ?? this.mouseMoveDuration;
+    const mainDist = Math.hypot(overshootX - startX, overshootY - startY);
+    const corrDist = Math.hypot(endX - overshootX, endY - overshootY);
+    const totalDist = mainDist + corrDist || 1;
+    const mainDuration = Math.round(totalDuration * (mainDist / totalDist));
+    const correctionDuration = Math.round(totalDuration * (corrDist / totalDist));
 
     await this.moveDirectly(startX, startY, overshootX, overshootY, { ...options, duration: mainDuration });
 
