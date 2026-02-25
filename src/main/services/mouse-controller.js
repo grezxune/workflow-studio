@@ -189,7 +189,8 @@ class MouseController {
       button = CLICK_BUTTONS.LEFT,
       clickType = CLICK_TYPES.SINGLE,
       position = null,
-      jitter = true
+      jitter = true,
+      duration
     } = options;
 
     if (position) {
@@ -202,7 +203,7 @@ class MouseController {
         targetY = jittered.y;
       }
 
-      await this.moveTo(targetX, targetY);
+      await this.moveTo(targetX, targetY, { duration });
     } else if (jitter && this.clickJitter.enabled) {
       const currentPos = await mouse.getPosition();
       const jittered = this.clickJitter.apply(currentPos.x, currentPos.y);

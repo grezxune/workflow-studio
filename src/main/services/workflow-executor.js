@@ -246,7 +246,8 @@ class WorkflowExecutor extends EventEmitter {
     const options = {
       button: action.button || 'left',
       clickType: action.clickType || 'single',
-      jitter: action.jitter !== false
+      jitter: action.jitter !== false,
+      duration: action.duration
     };
 
     if (action.x !== undefined && action.y !== undefined) {
