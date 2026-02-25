@@ -888,11 +888,51 @@ input[type="range"]::-webkit-slider-thumb:hover {
   border-color: var(--color-primary-500);
 }
 
+.scheduled-stop-then {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.scheduled-stop-then-label {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.scheduled-stop-select {
+  flex: 1;
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  font-family: inherit;
+  min-width: 0;
+}
+
+.scheduled-stop-select:focus {
+  outline: none;
+  border-color: var(--color-primary-500);
+}
+
+.scheduled-stop-then-info {
+  font-size: var(--text-xs);
+  color: var(--color-primary-400);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .scheduled-stop-active {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
+  flex-wrap: wrap;
 }
 
 .scheduled-stop-countdown {

@@ -110,10 +110,11 @@ function setupExecutorEvents(executor) {
     sendToRenderer(IPC_CHANNELS.ACTION_STARTED, data);
     // Forward to floating bar
     const actionType = data.action?.type || 'unknown';
-    const actionNames = { mouse_move: 'Mouse Move', click: 'Click', keyboard: 'Keyboard', wait: 'Wait', loop: 'Loop', conditional: 'Conditional', image_detect: 'Image Detect', pixel_detect: 'Pixel Detect' };
-    const name = actionNames[actionType] || actionType;
+    const actionNames = { mouse_move: 'Mouse Move', mouse_click: 'Click', keyboard: 'Keyboard', wait: 'Wait', loop: 'Loop', conditional: 'Conditional', image_detect: 'Image Detect', pixel_detect: 'Pixel Detect' };
+    const typeName = actionNames[actionType] || actionType;
+    const displayName = data.action?.name || typeName;
     floatingBar.sendToFloatingBar('floating-bar:update-action', {
-      text: `${name} (${data.index + 1}/${data.total})`
+      text: `${displayName} (${data.index + 1}/${data.total})`
     });
     if (actionType !== 'wait') {
       floatingBar.sendToFloatingBar('floating-bar:wait-hide');
