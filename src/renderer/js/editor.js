@@ -1254,8 +1254,8 @@ async function runCurrentWorkflow(dryRun = false) {
           <p>Workflow Studio needs Accessibility permission to control your mouse and keyboard.</p>
           <p>Please grant access in:</p>
           <ol style="margin: 12px 0; padding-left: 20px;">
-            <li>Open System Preferences</li>
-            <li>Go to Security & Privacy > Privacy</li>
+            <li>Open System Settings</li>
+            <li>Go to Privacy & Security</li>
             <li>Select Accessibility</li>
             <li>Add and enable Workflow Studio</li>
           </ol>
@@ -1278,7 +1278,7 @@ async function runCurrentWorkflow(dryRun = false) {
   if (!result.success) {
     // Check if it's a permission error
     if (result.error && result.error.includes('Accessibility permission')) {
-      showToast('error', 'Permission Required', 'Grant Accessibility permission in System Preferences');
+      showToast('error', 'Permission Required', 'Grant Accessibility permission in System Settings');
     } else {
       showToast('error', 'Error', result.error || 'Failed to start');
     }

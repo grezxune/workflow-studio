@@ -9,7 +9,7 @@ import { getMouseController } from './mouse-controller.js';
 import { getKeyboardController } from './keyboard-controller.js';
 import { sleep, randomDelay } from '../lib/humanize.js';
 import { ACTION_TYPES, EXECUTION_STATES } from '../../shared/constants.js';
-import { hasAccessibilityPermission, requestAccessibilityPermission } from '../lib/permissions.js';
+import { hasAccessibilityPermission } from '../lib/permissions.js';
 
 class WorkflowExecutor extends EventEmitter {
   constructor(options = {}) {
@@ -40,9 +40,8 @@ class WorkflowExecutor extends EventEmitter {
     // Check for accessibility permissions on macOS
     if (process.platform === 'darwin' && !options.dryRun) {
       if (!hasAccessibilityPermission()) {
-        console.log('[Executor] Accessibility permission not granted, requesting...');
-        requestAccessibilityPermission();
-        throw new Error('Accessibility permission required. Please grant access in System Preferences > Security & Privacy > Privacy > Accessibility, then try again.');
+        console.log('[Executor] Accessibility permission not granted');
+        throw new Error('Accessibility permission required. Grant access in System Settings > Privacy & Security > Accessibility, then try again.');
       }
       console.log('[Executor] Accessibility permission granted');
     }

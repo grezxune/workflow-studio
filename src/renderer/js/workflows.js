@@ -234,15 +234,54 @@ async function runWorkflow(workflowId) {
       return;
     }
 
+    // Check permissions first (macOS) to keep permission flow explicit
+    if (window.platform.isMac) {
+      try {
+        const status = await window.workflowAPI.getPermissionStatus();
+        if (!status.accessibility) {
+          showAccessibilityPermissionModal();
+          return;
+        }
+      } catch (err) {
+        console.warn('Could not check permissions:', err);
+      }
+    }
+
     const result = await window.workflowAPI.executeWorkflow(workflow);
 
     if (!result.success) {
-      showToast('error', 'Error', result.error || 'Failed to start workflow');
+      if (result.error && result.error.includes('Accessibility permission')) {
+        showAccessibilityPermissionModal();
+      } else {
+        showToast('error', 'Error', result.error || 'Failed to start workflow');
+      }
     }
   } catch (error) {
     console.error('Failed to run workflow:', error);
     showToast('error', 'Error', 'Failed to run workflow');
   }
+}
+
+function showAccessibilityPermissionModal() {
+  showModal('Accessibility Permission Required', `
+    <p>Workflow Studio needs Accessibility permission to control mouse and keyboard.</p>
+    <p>Please grant access in:</p>
+    <ol style="margin: 12px 0; padding-left: 20px;">
+      <li>Open System Settings</li>
+      <li>Go to Privacy & Security > Accessibility</li>
+      <li>Add and enable Workflow Studio</li>
+    </ol>
+    <p>After granting permission, run the workflow again.</p>
+  `, [
+    {
+      label: 'Open Accessibility Settings',
+      class: 'btn-primary',
+      onClick: async () => {
+        await window.workflowAPI.requestAccessibilityPermission();
+      }
+    },
+    { label: 'Cancel', class: 'btn-secondary' }
+  ]);
 }
 
 /**
