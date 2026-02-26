@@ -92,6 +92,9 @@ export const IPC_CHANNELS = {
   IMPORT_WORKFLOW: 'workflow:import',
   GET_RECENT_WORKFLOWS: 'workflow:get-recent',
 
+  AI_GENERATE_WORKFLOW: 'ai:generate-workflow',
+  AI_GET_SUPPORTED_GAMES: 'ai:get-supported-games',
+
   EXECUTE_WORKFLOW: 'execution:start',
   STOP_EXECUTION: 'execution:stop',
   PAUSE_EXECUTION: 'execution:pause',
@@ -188,6 +191,10 @@ export const DEFAULT_SETTINGS = {
   detection: {
     confidence: 0.9,
     method: DETECTION_METHODS.TEMPLATE
+  },
+  ai: {
+    openRouterApiKey: '',
+    preferredModel: 'codex-5.3'
   }
 };
 

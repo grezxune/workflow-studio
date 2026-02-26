@@ -139,6 +139,7 @@ function navigateTo(viewName) {
 async function loadSettings() {
   try {
     state.settings = await window.workflowAPI.getSettings();
+    window.dispatchEvent(new CustomEvent('settings:updated', { detail: { settings: state.settings } }));
   } catch (error) {
     console.error('Failed to load settings:', error);
     showToast('error', 'Error', 'Failed to load settings');

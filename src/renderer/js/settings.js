@@ -15,6 +15,8 @@ let overshootCheckbox = null;
 let typingSpeedMinInput = null;
 let typingSpeedMaxInput = null;
 let mouseMoveDurationInput = null;
+let aiOpenRouterKeyInput = null;
+let aiPreferredModelSelect = null;
 
 /**
  * Initialize settings view
@@ -31,6 +33,8 @@ function initSettingsView() {
   typingSpeedMinInput = document.getElementById('typing-speed-min');
   typingSpeedMaxInput = document.getElementById('typing-speed-max');
   mouseMoveDurationInput = document.getElementById('mouse-move-duration');
+  aiOpenRouterKeyInput = document.getElementById('ai-openrouter-key');
+  aiPreferredModelSelect = document.getElementById('ai-preferred-model');
 
   // Setup event listeners
   setupSettingsEvents();
@@ -107,6 +111,20 @@ function setupSettingsEvents() {
     state.settings.mouseMoveDuration = parseInt(mouseMoveDurationInput.value) || 250;
     await saveSettings({ mouseMoveDuration: state.settings.mouseMoveDuration });
   });
+
+  // OpenRouter API key
+  aiOpenRouterKeyInput?.addEventListener('change', async () => {
+    state.settings.ai = state.settings.ai || {};
+    state.settings.ai.openRouterApiKey = aiOpenRouterKeyInput.value.trim();
+    await saveSettings({ ai: state.settings.ai });
+  });
+
+  // Preferred AI model
+  aiPreferredModelSelect?.addEventListener('change', async () => {
+    state.settings.ai = state.settings.ai || {};
+    state.settings.ai.preferredModel = aiPreferredModelSelect.value || 'codex-5.3';
+    await saveSettings({ ai: state.settings.ai });
+  });
 }
 
 /**
@@ -143,7 +161,14 @@ async function loadSettingsIntoUI() {
 
   // Mouse movement duration
   mouseMoveDurationInput.value = state.settings.mouseMoveDuration ?? 250;
+  
+  // AI assistant settings
+  const ai = state.settings.ai || {};
+  aiOpenRouterKeyInput.value = ai.openRouterApiKey || '';
+  aiPreferredModelSelect.value = ai.preferredModel || 'codex-5.3';
 
+  // Load image gallery
+  loadImageGallery();
 }
 
 /**
@@ -307,6 +332,7 @@ async function changePauseHotkey() {
 async function saveSettings(updates) {
   try {
     state.settings = await window.workflowAPI.updateSettings(updates);
+    window.dispatchEvent(new CustomEvent('settings:updated', { detail: { settings: state.settings } }));
   } catch (error) {
     console.error('Failed to save settings:', error);
     showToast('error', 'Error', 'Failed to save settings');

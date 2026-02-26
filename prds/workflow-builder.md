@@ -1,7 +1,6 @@
 ---
 title: Visual Workflow Builder
 created: 2026-01-20
-status: draft
 owner: Tommy
 log:
   - 2026-01-20: Initial requirements documented
@@ -10,6 +9,8 @@ log:
   - 2026-01-20: Resolved all open questions - added design decisions, macro recording, routines, profile quality tiers
   - 2026-01-20: Added safety features, debug mode, scheduling, session behavior, sound detection, notifications, workflow chaining, analytics, game profiles
   - 2026-01-20: Added full cross-platform support (Windows, macOS, Linux X11/Wayland) with platform-specific documentation
+  - 2026-02-23: Expanded game-aware AI workflow generation with hybrid game selection, internal game context packs, and evaluation requirements
+  - 2026-02-23: Implemented initial game-aware AI generation in app (OpenRouter, model selection, Codex fallback, editor composer UI)
 ---
 
 # Visual Workflow Builder
@@ -29,12 +30,15 @@ Workflow Studio aims to be a premium automation tool for gamers. The visual work
 2. Produce human-like, undetectable automation behavior
 3. Provide a professional, intuitive workflow building experience
 4. Store all data locally for privacy and offline use
+5. Generate game-relevant workflow drafts from natural language with minimal manual correction
 
 ### KPIs
 - Time to create first working workflow < 5 minutes
 - User can create a 10-action workflow without documentation
 - Mouse movement patterns pass visual "human test" (no straight lines)
 - Zero data sent to external servers
+- For supported games, first AI draft accepted with only minor edits in >= 70% of sessions
+- AI-assisted generation roundtrip (submit prompt -> editable draft) p95 < 12 seconds
 
 ## Personas & Journeys
 
@@ -691,6 +695,86 @@ interface HumanizedTiming {
 
 Users can create and edit workflows using natural language via text or voice input. An LLM (GPT 5.2 Codex via OpenRouter) interprets the input and generates/modifies the workflow JSON.
 
+#### Game-Aware Generation Scope (New)
+
+The AI assistant must use game-specific context when available so requests like "shift click my whole inventory" resolve to game-relevant workflow logic instead of generic click loops.
+
+**Key requirements:**
+- AI generation works even when user does not explicitly choose a game
+- Optional game selector is available to improve precision and reduce ambiguity
+- Active game context is always visible and overrideable before submit
+- If context confidence is low, AI must ask a clarification question before applying changes
+
+#### Game Context Resolution Strategy
+
+Game context is resolved in this priority order:
+1. Explicitly selected game in AI composer
+2. Current game profile selected in sidebar
+3. Inference from user prompt text + active window/process metadata
+4. Fallback to generic mode (no game-specific assumptions)
+
+```typescript
+interface GameContextResolution {
+  gameId: string | null;            // null means generic mode
+  source: 'selector' | 'profile' | 'inference' | 'generic';
+  confidence: number;               // 0.0-1.0
+  inferredFrom?: {
+    promptMentions?: string[];      // e.g., ["RuneScape 3", "shift click"]
+    windowTitle?: string;
+    processName?: string;
+  };
+}
+```
+
+**Clarification behavior:**
+- If `confidence < 0.75`, return `action: "clarify"` with a short game disambiguation prompt
+- If `0.75 <= confidence < 0.9`, proceed but show "Using inferred game context" warning in review step
+- If `confidence >= 0.9`, proceed normally
+
+#### Game Selector UX (Optional, Recommended)
+
+- AI composer includes a compact game selector chip/dropdown
+- Default value: current game profile, if one is selected
+- Includes `Generic (No game context)` option
+- Search by game name + aliases
+- Keyboard accessible (`Cmd/Ctrl+K` focus, arrows to select, Enter to confirm)
+- Selector choice persists per-workflow and can be changed at any time
+
+#### Internal Game Context Packs
+
+Supported games provide structured context packs consumed by prompt assembly.
+
+```typescript
+interface GameContextPack {
+  id: string;                      // "runescape-3"
+  name: string;                    // "RuneScape 3"
+  aliases: string[];               // ["RS3", "RuneScape"]
+  terminology: Array<{
+    phrase: string;                // "shift click inventory"
+    meaning: string;               // Domain interpretation for AI
+    canonicalIntent: string;       // "inventory.bulk_action"
+  }>;
+  canonicalIntents: Array<{
+    id: string;                    // "inventory.bulk_action"
+    promptHints: string[];         // How users usually ask for it
+    workflowPatterns: Action[];    // Reusable action templates
+  }>;
+  constraints: {
+    requiresDetectionFor?: string[];   // Intents requiring image/pixel detection
+    riskyPatterns?: string[];          // Patterns to discourage
+    notes: string[];                   // Game-specific caveats
+  };
+  version: string;
+  updatedAt: string;
+}
+```
+
+**Pack lifecycle:**
+- Packs ship with app releases as versioned JSON assets
+- Packs can be patched via signed update bundle
+- Users can disable individual packs
+- Unknown games remain supported through generic mode
+
 #### Input Methods
 
 **Text Input:**
@@ -763,6 +847,14 @@ const SYSTEM_PROMPT = `You are a workflow automation assistant for Workflow Stud
 
 Your job is to convert natural language descriptions into workflow JSON or modify existing workflows.
 
+## Game Context
+
+You may receive an active game context pack with terminology, known intents, and constraints.
+- Prefer game-context interpretations over generic assumptions when confidence is high.
+- Never invent game mechanics not present in the context pack.
+- If user intent requires detections/images not available, ask a clarification question.
+- If game context is missing or low confidence, ask user to confirm the game before applying risky changes.
+
 ## Workflow Schema
 
 A workflow contains actions that execute sequentially. Here are the action types:
@@ -829,6 +921,8 @@ Always respond with valid JSON in this format:
   "action": "create" | "modify" | "delete" | "clarify",
   "changes": [...],  // Array of actions to add/modify
   "explanation": "Brief explanation of what was done",
+  "assumptions": ["Any assumptions made while generating changes"],
+  "context": { "gameId": "runescape-3", "confidence": 0.92 },
   "clarification": "Question if user input is ambiguous"
 }
 
@@ -853,6 +947,12 @@ interface AIRequestContext {
   // Current workflow state
   currentWorkflow: Workflow | null;
 
+  // Resolved game context (optional)
+  activeGameContext?: {
+    resolution: GameContextResolution;
+    pack?: GameContextPack;
+  };
+
   // Available resources
   savedDetections: SavedDetection[];  // Images, pixels user has captured
   savedImages: CapturedImage[];
@@ -868,6 +968,21 @@ interface AIRequestContext {
   userInput: string;
 }
 ```
+
+#### Prompt Assembly Pipeline
+
+Request payload to the LLM is assembled in deterministic order:
+1. Base system prompt (schema + safety constraints)
+2. Resolved game context summary (if present)
+3. Current workflow JSON (if editing)
+4. Available detections/images
+5. Recent conversation history
+6. New user input
+
+Game context summary is token-budgeted and limited to:
+- Top 20 terminology mappings
+- Top 10 canonical intents by relevance
+- High-priority constraints only
 
 **Conversation Persistence:**
 - History tied to specific workflow being edited
@@ -902,7 +1017,9 @@ AI Response:
       ]
     }
   ],
-  "explanation": "Created an infinite loop that presses E approximately every 3 seconds (with slight variation for realism)"
+  "explanation": "Created an infinite loop that presses E approximately every 3 seconds (with slight variation for realism)",
+  "assumptions": ["No game-specific context was required for this keyboard action"],
+  "context": { "gameId": null, "confidence": 1.0 }
 }
 ```
 
@@ -913,6 +1030,7 @@ User: "Wait for the loot button to appear before pressing E"
 AI Response:
 {
   "action": "clarify",
+  "context": { "gameId": null, "confidence": 0.62 },
   "clarification": "I can add a wait condition, but I need an image of the 'loot button' to detect it. Would you like to capture a screenshot of the button now?"
 }
 ```
@@ -941,7 +1059,9 @@ AI Response:
       }
     }
   ],
-  "explanation": "Added a click action that waits for your saved 'loot-button-img' to appear, then clicks it with natural jitter"
+  "explanation": "Added a click action that waits for your saved 'loot-button-img' to appear, then clicks it with natural jitter",
+  "assumptions": ["The saved detection label matches the same loot button in current game context"],
+  "context": { "gameId": null, "confidence": 0.9 }
 }
 ```
 
@@ -952,6 +1072,10 @@ AI Response:
 - User can review before accepting
 - "Accept" / "Modify" / "Reject" buttons
 - Undo fully reverses AI changes
+- Review step displays:
+  - Active game context (`RuneScape 3`, `Inferred from prompt`, etc.)
+  - Key assumptions made by AI ("Assumed inventory panel is already open")
+  - Structured diff of workflow changes before apply
 
 **Feedback Loop:**
 - If user manually edits AI-generated actions, that's implicit feedback
@@ -1630,6 +1754,8 @@ interface GameProfile {
     movementProfile?: string;      // Different movement style per game
     defaultDetectionEngine: 'nutjs' | 'opencv' | 'sharp';
     coordinateOffset?: { x: number; y: number };  // For windowed mode
+    aiContextPackId?: string;      // Links profile to game context pack
+    aiContextMode: 'strict' | 'assist' | 'off';   // strict=enforce pack, assist=best effort
   };
 
   // Associated resources
@@ -1652,6 +1778,12 @@ interface GameProfile {
 - Game-specific movement profiles (FPS vs MMO vs mobile)
 - Quick switching between games
 - Import/export profiles to share setups
+
+#### F16.4: Profile-AI Coupling
+- When a profile is active, AI composer preselects that profile's game context
+- If profile has `aiContextMode: strict`, AI cannot silently fall back to another game
+- If profile has `aiContextMode: assist`, AI may infer from prompt but must show source and confidence
+- If profile has `aiContextMode: off`, AI operates in generic mode
 
 ## Non-functional Requirements
 
@@ -1679,7 +1811,8 @@ interface GameProfile {
 - Movement profiles stored in app data directory
 
 ### Security
-- No external network calls for core functionality
+- No external network calls for core non-AI automation functionality
+- AI and optional Whisper calls are opt-in and only used with user-provided API keys
 - No telemetry or usage tracking
 - Workflows are human-readable JSON (auditable)
 
@@ -1745,6 +1878,52 @@ interface GameProfile {
 - May not work with exclusive fullscreen (OS limitation on all platforms)
 - Steam Deck: Works in Desktop Mode
 
+## Performance Strategy & Budgets
+
+### Strategy
+- Keep AI context pack retrieval local and deterministic (no remote RAG dependency)
+- Cache resolved game context + top intent snippets in memory per workflow session
+- Enforce bounded context assembly to prevent prompt bloat
+- Validate and diff AI output incrementally to keep review UI responsive
+
+### Budgets
+
+| Path | Target (p95) | Hard Limit |
+|------|--------------|------------|
+| Game context resolution | < 40ms | 100ms |
+| Prompt assembly (including pack summary) | < 80ms | 200ms |
+| AI roundtrip (submit -> response) | < 12s | 20s |
+| JSON validation + workflow diff generation | < 120ms | 300ms |
+| Review panel render after AI response | < 100ms | 250ms |
+
+### Validation
+- Add instrumentation for each budgeted stage
+- Track regressions in analytics dashboard and local developer logs
+- Fail safely: if context resolution breaches hard limit, continue in generic mode with warning
+
+## Security Architecture & Threat Model
+
+### Trust Boundaries
+1. User input (text/voice) is untrusted
+2. Game context pack files are trusted only after schema + signature validation
+3. LLM responses are untrusted until schema and policy checks pass
+4. Workflow execution layer is privileged and must enforce policy independently of AI output
+
+### Threats & Mitigations
+
+| Threat | Vector | Mitigation |
+|--------|--------|------------|
+| Prompt injection through user input | User includes instructions to bypass safeguards | System prompt is immutable, strict JSON schema validation, policy layer rejects disallowed actions |
+| Malicious or stale game context pack | Tampered pack file or outdated mapping | Signed pack manifests, version pinning, checksum verification, safe fallback to generic mode |
+| Unsafe action generation | AI hallucinates risky loops/actions | Max loop/runtime defaults, risk scanner flags hazardous patterns, explicit user review required |
+| Context spoofing | Wrong game inferred from ambiguous text | Confidence thresholds + clarification flow before apply |
+| Sensitive data leakage | Sending local file paths/secrets to LLM | Redaction layer for secrets/paths, only minimal required context sent to provider |
+
+### Authorization & Policy
+- AI generation never directly executes actions; it only proposes workflow diffs
+- Apply step requires explicit user confirmation
+- Execution engine enforces existing safety rules (panic hotkey, runtime limits, focus checks)
+
 ## Data & Integrations
 
 ### Local Storage Structure
@@ -1755,6 +1934,14 @@ interface GameProfile {
 ├── workflows/
 │   ├── workflow-{id}.json
 │   └── ...
+├── game-context/
+│   ├── packs/
+│   │   ├── runescape-3.v1.json
+│   │   └── ...
+│   ├── overrides/
+│   │   ├── user-overrides.json     # Optional user tuning per pack
+│   │   └── ...
+│   └── index.json                  # Installed packs + versions
 ├── images/
 │   ├── {id}.png              # Captured images for detection
 │   └── ...
@@ -1780,7 +1967,8 @@ interface GameProfile {
 │   ├── whisperApiKey         # Optional Whisper API key
 │   └── ...
 └── cache/
-    └── ai-conversations/     # Recent AI conversation history
+    ├── ai-conversations/     # Recent AI conversation history
+    └── ai-evals/             # Prompt/response eval metadata (no secrets)
 ```
 
 **API Key Security:**
@@ -1804,6 +1992,7 @@ interface GameProfile {
 | **Storage** | electron-store + fs | JSON for config, filesystem for workflows/images |
 | **Movement Math** | Custom Wind Mouse | Proven algorithm for human-like movement |
 | **AI/NLP** | OpenRouter API | Access to GPT 5.2 Codex, user brings own key |
+| **Game Context Packs** | Versioned local JSON + schema validator | Deterministic, auditable game-specific knowledge |
 | **Speech-to-Text** | Web Speech API / Whisper | Browser native or high-accuracy cloud option |
 | **Audio Analysis** | Web Audio API + Meyda | Frequency analysis, volume detection |
 | **Audio Fingerprinting** | Chromaprint / AcoustID | Match recorded sounds |
@@ -1902,9 +2091,17 @@ sudo pacman -S xdotool xclip libappindicator-gtk3
 | Quest text detection | OCR | Dynamic text content |
 | Inventory slot detection | OpenCV | Handles item variations |
 
+## Open Questions
+
+1. Which games are in v1 "supported" list for context packs (top 3, top 10, or community-driven)?
+2. Should user-created custom game packs be allowed in v1, or only official signed packs?
+3. How aggressive should strict mode be for profile-linked AI context (block apply vs warn-and-continue)?
+4. What level of telemetry (if any) is acceptable for measuring intent accuracy while maintaining privacy-first positioning?
+5. What is the content review process for game-pack updates to prevent bad or unsafe guidance?
+
 ## Design Decisions
 
-Resolved decisions for previously open questions:
+Resolved decisions for key architecture and UX questions:
 
 ### 1. Exclusive Fullscreen Handling
 **Decision: Warn users + document workaround**
@@ -2004,6 +2201,14 @@ Resolved decisions for previously open questions:
 - Link to OpenRouter dashboard for detailed billing
 - No pre-request estimates (adds friction, often inaccurate)
 
+### 15. Game Selector vs Prompt-Only Context
+**Decision: Hybrid approach (optional selector + inference fallback)**
+- Include optional game selector in AI composer for precision and fast disambiguation
+- Do not require selector; users can still type game names naturally
+- Use profile context as default selection when available
+- Require clarification on low-confidence inference before applying changes
+- Preserve generic mode for unsupported games or game-agnostic workflows
+
 ## Risks & Mitigations
 
 | Risk | Impact | Likelihood | Mitigation |
@@ -2017,6 +2222,9 @@ Resolved decisions for previously open questions:
 | Movement profile insufficient | Generic-looking movements | Medium | Require minimum recording time, provide quality indicator |
 | AI generates invalid JSON | Workflow creation fails | Medium | JSON validation, retry with error context, fallback to manual |
 | AI misunderstands intent | Wrong workflow created | Medium | Show preview before applying, easy undo, clarification flow |
+| Wrong game context selected/inferred | Workflow semantically incorrect for game | Medium | Show context source + confidence, allow one-click override, strict-mode profiles |
+| Game context packs drift over time | Guidance becomes outdated | Medium | Versioned packs, release cadence, deprecation flags, fallback to generic mode |
+| Context packs increase token usage | Higher latency/cost | Medium | Budgeted pack summaries, relevance ranking, strict token caps |
 | OpenRouter API costs | Unexpected user charges | Low | Show token estimates, usage tracking in UI, model selection |
 | API key security | Key exposure | Low | Encrypted storage, never in exports, clear security docs |
 | Voice recognition errors | Frustrating UX | Medium | Show transcription before sending, easy edit, fallback to text |
@@ -2036,6 +2244,8 @@ Resolved decisions for previously open questions:
 2. **Reliability**: Workflows execute successfully 95%+ of the time when game state is correct
 3. **Naturalness**: Blind test - observers cannot distinguish automated movements from human in 70%+ of cases
 4. **Performance**: No frame drops or stuttering during workflow execution
+5. **Game Intent Accuracy**: For supported games, evaluator marks AI intent interpretation correct in >= 85% of first drafts
+6. **Correction Load**: Median manual edits after AI generation <= 3 action-level edits per request
 
 ## Rollout Plan
 
@@ -2077,6 +2287,10 @@ Resolved decisions for previously open questions:
 - API key settings (user brings own key, stored encrypted)
 - Text input for natural language workflow creation
 - Context-aware editing (knows current workflow, saved detections)
+- Hybrid game context resolution (selector, profile, inference, generic fallback)
+- Game context chip/dropdown in AI composer with confidence indicators
+- Initial context pack schema and validator
+- Ship first-party context packs for initial supported games
 - Clarification flow for ambiguous inputs
 - Voice input (Web Speech API)
 - Optional Whisper integration for better accuracy
@@ -2130,6 +2344,7 @@ Resolved decisions for previously open questions:
 - **Mobile Push Notifications**: Pushover/ntfy integration (user brings own key)
 - **Analytics Dashboard**: Success rates, timing stats, recommendations
 - **Game Profiles**: Organize workflows/settings by game
+- **Context Pack Updates**: Signed pack updates and version management
 - Import/export profiles for sharing
 
 ## Next Steps
@@ -2144,6 +2359,9 @@ Resolved decisions for previously open questions:
    - API key management (encrypted storage)
    - System prompt and schema design
    - JSON response parsing and validation
-5. Design workflow builder UI mockups
-6. Implement detection engine abstraction layer
-7. Begin Phase 1 implementation
+5. Define v1 game context pack schema and authoring checklist
+6. Build AI context resolution service (selector/profile/inference/generic)
+7. Prototype game-aware prompt assembly with RuneScape 3 sample intents
+8. Design workflow builder + AI composer UI mockups
+9. Implement detection engine abstraction layer
+10. Begin Phase 1 implementation

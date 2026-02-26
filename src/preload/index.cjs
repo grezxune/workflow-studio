@@ -21,6 +21,10 @@ const IPC_CHANNELS = {
   IMPORT_WORKFLOW: 'workflow:import',
   GET_RECENT_WORKFLOWS: 'workflow:get-recent',
 
+  // AI
+  AI_GENERATE_WORKFLOW: 'ai:generate-workflow',
+  AI_GET_SUPPORTED_GAMES: 'ai:get-supported-games',
+
   // Execution
   EXECUTE_WORKFLOW: 'execution:start',
   STOP_EXECUTION: 'execution:stop',
@@ -66,6 +70,7 @@ const IPC_CHANNELS = {
 
   // Safety
   SET_PANIC_HOTKEY: 'safety:set-panic-hotkey',
+  SET_PAUSE_HOTKEY: 'safety:set-pause-hotkey',
   GET_SAFETY_CONFIG: 'safety:get-config',
   TRIGGER_PANIC: 'safety:trigger-panic',
   PANIC_TRIGGERED: 'safety:panic-triggered',
@@ -147,6 +152,12 @@ contextBridge.exposeInMainWorld('workflowAPI', {
 
   getRecentWorkflows: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_RECENT_WORKFLOWS),
+
+  generateWorkflowWithAI: (payload) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AI_GENERATE_WORKFLOW, payload),
+
+  getAISupportedGames: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.AI_GET_SUPPORTED_GAMES),
 
   // ==================== EXECUTION ====================
 

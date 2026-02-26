@@ -478,7 +478,39 @@ class StorageService {
   }
 
   getSettings() {
-    return this.store.get('settings', DEFAULT_SETTINGS);
+    const settings = this.store.get('settings', DEFAULT_SETTINGS) || {};
+    return {
+      ...DEFAULT_SETTINGS,
+      ...settings,
+      defaultLoopDelay: {
+        ...DEFAULT_SETTINGS.defaultLoopDelay,
+        ...(settings.defaultLoopDelay || {})
+      },
+      typingSpeed: {
+        ...DEFAULT_SETTINGS.typingSpeed,
+        ...(settings.typingSpeed || {})
+      },
+      clickJitter: {
+        ...DEFAULT_SETTINGS.clickJitter,
+        ...(settings.clickJitter || {})
+      },
+      windMouse: {
+        ...DEFAULT_SETTINGS.windMouse,
+        ...(settings.windMouse || {})
+      },
+      overshoot: {
+        ...DEFAULT_SETTINGS.overshoot,
+        ...(settings.overshoot || {})
+      },
+      detection: {
+        ...DEFAULT_SETTINGS.detection,
+        ...(settings.detection || {})
+      },
+      ai: {
+        ...DEFAULT_SETTINGS.ai,
+        ...(settings.ai || {})
+      }
+    };
   }
 
   updateSettings(updates) {

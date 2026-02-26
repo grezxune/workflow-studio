@@ -232,6 +232,12 @@
                     <polyline points="7 3 7 8 15 8"/>
                   </svg>
                 </button>
+                <button class="btn btn-icon" id="btn-toggle-ai" title="Show AI Draft Panel" aria-expanded="false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2l2.4 5.1L20 9l-4 3.9L17 18l-5-2.6L7 18l1-5.1L4 9l5.6-1.9L12 2z"/>
+                    <polyline points="8 14 12 10 16 14"/>
+                  </svg>
+                </button>
                 <div class="toolbar-divider"></div>
                 <button class="btn btn-icon" id="btn-dry-run" title="Dry Run (F9)">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -249,6 +255,54 @@
                     <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
                   </svg>
                 </button>
+              </div>
+            </div>
+
+            <div class="ai-composer collapsed" id="ai-composer">
+              <div class="ai-composer-header">
+                <div class="ai-composer-title">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2l2.4 5.1L20 9l-4 3.9L17 18l-5-2.6L7 18l1-5.1L4 9l5.6-1.9L12 2z"/>
+                  </svg>
+                  AI Workflow Draft
+                </div>
+                <span class="ai-context-pill" id="ai-context-pill">Generic context</span>
+              </div>
+              <div class="ai-composer-grid">
+                <div class="config-field">
+                  <label for="ai-game-select">Game Context</label>
+                  <select id="ai-game-select">
+                    <option value="generic">Generic (No game context)</option>
+                  </select>
+                </div>
+                <div class="config-field">
+                  <label for="ai-model-select">Model</label>
+                  <select id="ai-model-select">
+                    <option value="codex-5.3">Codex 5.3</option>
+                    <option value="opus-4.6">Opus 4.6</option>
+                  </select>
+                </div>
+                <div class="config-field">
+                  <label for="ai-apply-mode">Apply Mode</label>
+                  <select id="ai-apply-mode">
+                    <option value="replace">Replace current actions</option>
+                    <option value="append">Append to current actions</option>
+                  </select>
+                </div>
+              </div>
+              <div class="config-field">
+                <label for="ai-prompt-input">Describe what you want</label>
+                <textarea id="ai-prompt-input" rows="3" placeholder="Example: I’m playing RuneScape 3 and want to shift-click my whole inventory, then wait 2-3 seconds and repeat."></textarea>
+              </div>
+              <div class="ai-composer-actions">
+                <button class="btn btn-primary" id="btn-ai-generate">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 2L11 13"/>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                  </svg>
+                  Generate Workflow Draft
+                </button>
+                <span class="ai-composer-meta" id="ai-composer-meta">Uses OpenRouter</span>
               </div>
             </div>
 
@@ -424,6 +478,23 @@
           <h1>Settings</h1>
 
           <div class="settings-grid">
+            <div class="settings-section">
+              <h2>AI Assistant</h2>
+              <div class="setting-item">
+                <label for="ai-openrouter-key">OpenRouter API Key</label>
+                <input type="password" id="ai-openrouter-key" placeholder="sk-or-v1-...">
+                <p class="setting-hint">Required for AI workflow generation. Stored locally in encrypted app config.</p>
+              </div>
+              <div class="setting-item">
+                <label for="ai-preferred-model">Preferred Model</label>
+                <select id="ai-preferred-model">
+                  <option value="codex-5.3">Codex 5.3 (fallback to Codex 5.2)</option>
+                  <option value="opus-4.6">Opus 4.6</option>
+                </select>
+                <p class="setting-hint">If Codex 5.3 is not available on OpenRouter, Workflow Studio automatically uses Codex 5.2.</p>
+              </div>
+            </div>
+
             <div class="settings-section">
               <h2>Storage</h2>
               <div class="setting-item">

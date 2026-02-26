@@ -17,6 +17,8 @@ import quickRecord from '../services/quick-record.js';
 import workflowPreview from '../services/workflow-preview.js';
 import floatingBar from '../services/floating-bar.js';
 import { initHotkeyService, getHotkeys, setHotkey, removeHotkey } from '../services/hotkey-service.js';
+import { generateWorkflowDraftWithAI } from '../services/ai/ai-workflow-generator.js';
+import { listSupportedGames } from '../services/ai/game-context-packs.js';
 
 let mainWindow = null;
 
@@ -64,6 +66,7 @@ export function initializeIPC(window) {
   registerSafetyHandlers(safety);
   registerUtilityHandlers();
   registerTemplateHandlers(storage);
+  registerAIHandlers(storage);
   registerQuickRecordHandlers();
   registerPreviewHandlers();
   registerFloatingBarHandlers();
@@ -483,6 +486,23 @@ function registerTemplateHandlers(storage) {
 
   ipcMain.handle(IPC_CHANNELS.DUPLICATE_TEMPLATE, async (event, id) => {
     return storage.duplicateTemplate(id);
+  });
+}
+
+function registerAIHandlers(storage) {
+  ipcMain.handle(IPC_CHANNELS.AI_GET_SUPPORTED_GAMES, async () => {
+    return listSupportedGames();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.AI_GENERATE_WORKFLOW, async (event, payload = {}) => {
+    try {
+      const settings = storage.getSettings();
+      const availableImages = storage.getAllImages();
+      return await generateWorkflowDraftWithAI(payload, { settings, availableImages });
+    } catch (error) {
+      console.error('[IPC] AI generation failed:', error);
+      return { success: false, error: error.message || 'Failed to generate workflow.' };
+    }
   });
 }
 
