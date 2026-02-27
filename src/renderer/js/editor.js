@@ -1666,9 +1666,21 @@ async function renderConfigFields(action, index, targetConfigBody, saveCallback)
           </div>
           <p class="config-field-hint">Leave empty to click at current position</p>
         </div>
+        <div class="config-field">
+          <label class="checkbox-label">
+            <input type="checkbox" id="config-click-jitter" ${action.jitter !== false ? 'checked' : ''}>
+            Click jitter
+          </label>
+          <p class="config-field-hint">Adds a small random offset to the click position for human-like imprecision</p>
+        </div>
       `;
 
       setupName();
+
+      document.getElementById('config-click-jitter').addEventListener('change', (e) => {
+        action.jitter = e.target.checked;
+        save();
+      });
 
       document.getElementById('config-button').addEventListener('change', (e) => {
         action.button = e.target.value;
