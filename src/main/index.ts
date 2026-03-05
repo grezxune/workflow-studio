@@ -5,11 +5,12 @@
 import { app, BrowserWindow, globalShortcut, Menu, Tray, nativeImage, shell } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { initializeIPC, cleanupIPC } from './ipc/index.js';
-import { getSafetyService } from './services/safety.js';
-import { getStorageService } from './services/storage.js';
-import { initRegionSelectorIPC } from './services/region-selector.js';
-import { initAutoUpdater } from './services/auto-updater.js';
+import { initializeIPC, cleanupIPC } from './ipc/index';
+import { getSafetyService } from './services/safety';
+import { getStorageService } from './services/storage';
+import { initRegionSelectorIPC } from './services/region-selector';
+import { initAutoUpdater } from './services/auto-updater';
+import { getPreloadPath, loadRendererPage } from './lib/renderer-path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,8 +26,8 @@ if (process.platform === 'darwin') {
   app.setName('Workflow Studio');
 }
 
-let mainWindow = null;
-let tray = null;
+let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
 let isQuitting = false;
 
 function createWindow() {
@@ -39,7 +40,7 @@ function createWindow() {
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     frame: process.platform !== 'darwin',
     webPreferences: {
-      preload: path.join(__dirname, '../preload/index.cjs'),
+      preload: getPreloadPath(),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false
@@ -48,12 +49,12 @@ function createWindow() {
     show: false
   });
 
-  mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+  void loadRendererPage(mainWindow, 'index.html');
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
 
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.ELECTRON_RENDERER_URL) {
       mainWindow.webContents.openDevTools();
     }
   });
@@ -116,7 +117,7 @@ function createTray() {
       {
         label: 'Emergency Stop (F7)',
         click: async () => {
-          const { getWorkflowExecutor } = await import('./services/workflow-executor.js');
+          const { getWorkflowExecutor } = await import('./services/workflow-executor');
           await getWorkflowExecutor().emergencyStop();
         }
       },
@@ -288,7 +289,7 @@ function createMenu() {
           label: 'Emergency Stop',
           accelerator: 'F7',
           click: async () => {
-            const { getWorkflowExecutor } = await import('./services/workflow-executor.js');
+            const { getWorkflowExecutor } = await import('./services/workflow-executor');
             await getWorkflowExecutor().emergencyStop();
           }
         }

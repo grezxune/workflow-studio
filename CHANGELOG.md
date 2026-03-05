@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-03-05
+- Migrated app architecture to `electron-vite` with React + TypeScript renderer entrypoint.
+- Converted main-process and shared runtime modules from JavaScript to TypeScript (`src/main/**`, `src/shared/**`).
+- Migrated preload bridge to TypeScript (`src/preload/index.ts`) and preserved existing IPC API surface.
+- Replaced legacy renderer script-tag boot with React host shell and TypeScript compatibility module (`src/renderer/legacy/legacy-app.ts`).
+- Added Vite/Electron build config (`electron.vite.config.ts`) and TypeScript project config (`tsconfig.json`).
+- Updated package scripts and Electron Builder file inclusion to build from `out/**`.
+- Removed obsolete JavaScript entrypoints (`src/main.js`, `src/preload.js`, `src/renderer.js`, and `src/renderer/js/**`).
+
 ## 2026-02-23
 - Expanded `/prds/workflow-builder.md` with game-aware AI workflow generation requirements.
 - Added hybrid game-context decision (optional selector + prompt/profile inference fallback).

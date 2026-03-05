@@ -6,9 +6,9 @@
  */
 
 import { globalShortcut } from 'electron';
-import { getStorageService } from './storage.js';
-import { getWorkflowExecutor } from './workflow-executor.js';
-import { getDetectionService } from './detection.js';
+import { getStorageService } from './storage';
+import { getWorkflowExecutor } from './workflow-executor';
+import { getDetectionService } from './detection';
 
 let mainWindow = null;
 let registeredHotkeys = new Map(); // accelerator -> { workflowId, workflowName }

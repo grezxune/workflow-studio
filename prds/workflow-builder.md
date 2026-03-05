@@ -11,6 +11,7 @@ log:
   - 2026-01-20: Added full cross-platform support (Windows, macOS, Linux X11/Wayland) with platform-specific documentation
   - 2026-02-23: Expanded game-aware AI workflow generation with hybrid game selection, internal game context packs, and evaluation requirements
   - 2026-02-23: Implemented initial game-aware AI generation in app (OpenRouter, model selection, Codex fallback, editor composer UI)
+  - 2026-03-05: Migrated runtime architecture to Electron + Vite with React renderer host and TypeScript main/preload/shared modules
 ---
 
 # Visual Workflow Builder
@@ -39,6 +40,15 @@ Workflow Studio aims to be a premium automation tool for gamers. The visual work
 - Zero data sent to external servers
 - For supported games, first AI draft accepted with only minor edits in >= 70% of sessions
 - AI-assisted generation roundtrip (submit prompt -> editable draft) p95 < 12 seconds
+
+## Architecture Migration Update (2026-03-05)
+
+- Build/runtime migrated to `electron-vite` for main, preload, and renderer pipelines.
+- Main process modules moved from JavaScript to TypeScript under `src/main/**/*.ts`.
+- Preload bridge moved to TypeScript at `src/preload/index.ts` with existing channel/API parity.
+- Primary renderer migrated to React + TypeScript entrypoint (`src/renderer/src/main.tsx`).
+- Existing renderer behavior is currently hosted through a compatibility layer (`src/renderer/legacy/legacy-app.ts`) while full component-level decomposition proceeds.
+- Secondary overlay windows remain file-based (`position-picker`, `region-select`, `workflow-preview`, `floating-bar`, `quick-record`, `capture-preview`) and are loaded through shared dev/prod URL resolution.
 
 ## Personas & Journeys
 

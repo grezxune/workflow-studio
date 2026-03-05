@@ -2,7 +2,7 @@
  * OpenRouter-backed workflow generation service.
  */
 
-import { inferGameContextFromPrompt, getGameContextPackById } from './game-context-packs.js';
+import { inferGameContextFromPrompt, getGameContextPackById } from './game-context-packs';
 
 const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models';
 const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions';

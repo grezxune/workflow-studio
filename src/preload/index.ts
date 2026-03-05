@@ -5,7 +5,10 @@
  * NOTE: This must be CommonJS (.cjs) for Electron context isolation
  */
 
-const { contextBridge, ipcRenderer } = require('electron');
+import { contextBridge, ipcRenderer } from 'electron';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
 
 // IPC Channels (inlined since preload can't import ES modules)
 // MUST MATCH src/shared/constants.js exactly!

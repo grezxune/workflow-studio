@@ -9,7 +9,7 @@ import path from 'path';
 import { app } from 'electron';
 import Store from 'electron-store';
 import { v4 as uuidv4 } from 'uuid';
-import { DEFAULT_SETTINGS } from '../../shared/constants.js';
+import { DEFAULT_SETTINGS } from '../../shared/constants';
 
 class StorageService {
   constructor() {

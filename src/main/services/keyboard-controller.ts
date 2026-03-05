@@ -5,7 +5,7 @@
  */
 
 import { keyboard, Key } from '@nut-tree-fork/nut-js';
-import { generateTypingDelays, sleep, randomDelay } from '../lib/humanize.js';
+import { generateTypingDelays, sleep, randomDelay } from '../lib/humanize';
 
 class KeyboardController {
   constructor(settings = {}) {

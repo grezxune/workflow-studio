@@ -7,11 +7,7 @@
  */
 
 import { BrowserWindow, screen, ipcMain } from 'electron';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { loadRendererPage } from '../lib/renderer-path';
 
 let previewWindow = null;
 let mainWindow = null;
@@ -147,7 +143,7 @@ export function showPreviewOverlay(workflow, mainWin) {
   previewWindow.displayOffset = { x: bounds.x, y: bounds.y };
   previewWindow.setBounds(bounds);
 
-  previewWindow.loadFile(path.join(__dirname, '../../renderer/workflow-preview.html'));
+  void loadRendererPage(previewWindow, 'workflow-preview.html');
 
   previewWindow.on('closed', () => {
     previewWindow = null;

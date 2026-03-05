@@ -5,14 +5,10 @@
  */
 
 import { BrowserWindow, ipcMain, screen } from 'electron';
-import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
-import { getDetectionService } from './detection.js';
-import { getStorageService } from './storage.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { getDetectionService } from './detection';
+import { getStorageService } from './storage';
+import { loadRendererPage } from '../lib/renderer-path';
 
 let selectorWindow = null;
 let positionPickerWindow = null;
@@ -115,7 +111,7 @@ function createSelectorWindow() {
   // Explicitly set bounds after creation to ensure proper multi-monitor coverage
   selectorWindow.setBounds(bounds);
 
-  selectorWindow.loadFile(path.join(__dirname, '../../renderer/region-select.html'));
+  void loadRendererPage(selectorWindow, 'region-select.html');
 
   selectorWindow.on('closed', () => {
     selectorWindow = null;
@@ -163,7 +159,7 @@ function createPositionPickerWindow() {
   // Explicitly set bounds after creation to ensure proper multi-monitor coverage
   positionPickerWindow.setBounds(bounds);
 
-  positionPickerWindow.loadFile(path.join(__dirname, '../../renderer/position-picker.html'));
+  void loadRendererPage(positionPickerWindow, 'position-picker.html');
 
   positionPickerWindow.on('closed', () => {
     positionPickerWindow = null;
@@ -241,7 +237,7 @@ function showCapturePreview(imagePath, region, defaultName) {
       }
     });
 
-    previewWindow.loadFile(path.join(__dirname, '../../renderer/capture-preview.html'));
+    void loadRendererPage(previewWindow, 'capture-preview.html');
 
     previewWindow.webContents.once('did-finish-load', () => {
       previewWindow.webContents.send('preview-image-data', {

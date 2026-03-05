@@ -9,8 +9,8 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { createRequire } from 'module';
-import { getStorageService } from './storage.js';
-import { DETECTION_METHODS } from '../../shared/constants.js';
+import { getStorageService } from './storage';
+import { DETECTION_METHODS } from '../../shared/constants';
 
 const require = createRequire(import.meta.url);
 const { cv } = require('opencv-wasm');

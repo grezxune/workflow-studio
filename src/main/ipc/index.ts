@@ -6,19 +6,19 @@
 
 import fs from 'fs';
 import { ipcMain, dialog } from 'electron';
-import { IPC_CHANNELS } from '../../shared/constants.js';
-import { getStorageService } from '../services/storage.js';
-import { getWorkflowExecutor } from '../services/workflow-executor.js';
-import { getSafetyService } from '../services/safety.js';
-import { getDetectionService } from '../services/detection.js';
-import { getMouseController } from '../services/mouse-controller.js';
-import { getPermissionStatus, requestAccessibilityPermission } from '../lib/permissions.js';
-import quickRecord from '../services/quick-record.js';
-import workflowPreview from '../services/workflow-preview.js';
-import floatingBar from '../services/floating-bar.js';
-import { initHotkeyService, getHotkeys, setHotkey, removeHotkey } from '../services/hotkey-service.js';
-import { generateWorkflowDraftWithAI } from '../services/ai/ai-workflow-generator.js';
-import { listSupportedGames } from '../services/ai/game-context-packs.js';
+import { IPC_CHANNELS } from '../../shared/constants';
+import { getStorageService } from '../services/storage';
+import { getWorkflowExecutor } from '../services/workflow-executor';
+import { getSafetyService } from '../services/safety';
+import { getDetectionService } from '../services/detection';
+import { getMouseController } from '../services/mouse-controller';
+import { getPermissionStatus, requestAccessibilityPermission } from '../lib/permissions';
+import quickRecord from '../services/quick-record';
+import workflowPreview from '../services/workflow-preview';
+import floatingBar from '../services/floating-bar';
+import { initHotkeyService, getHotkeys, setHotkey, removeHotkey } from '../services/hotkey-service';
+import { generateWorkflowDraftWithAI } from '../services/ai/ai-workflow-generator';
+import { listSupportedGames } from '../services/ai/game-context-packs';
 
 let mainWindow = null;
 

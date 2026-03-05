@@ -5,16 +5,16 @@
  */
 
 import { mouse, Point, Button } from '@nut-tree-fork/nut-js';
-import WindMouse from '../lib/wind-mouse.js';
-import ClickJitter from '../lib/click-jitter.js';
+import WindMouse from '../lib/wind-mouse';
+import ClickJitter from '../lib/click-jitter';
 import {
   shouldOvershoot,
   calculateOvershoot,
   pauseBeforeCorrection,
   randomDelay,
   sleep
-} from '../lib/humanize.js';
-import { CLICK_BUTTONS, CLICK_TYPES, DEFAULT_SETTINGS } from '../../shared/constants.js';
+} from '../lib/humanize';
+import { CLICK_BUTTONS, CLICK_TYPES, DEFAULT_SETTINGS } from '../../shared/constants';
 
 class MouseController {
   constructor(settings = {}) {

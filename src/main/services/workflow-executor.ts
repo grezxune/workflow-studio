@@ -5,11 +5,11 @@
  */
 
 import { EventEmitter } from 'events';
-import { getMouseController } from './mouse-controller.js';
-import { getKeyboardController } from './keyboard-controller.js';
-import { sleep, randomDelay } from '../lib/humanize.js';
-import { ACTION_TYPES, EXECUTION_STATES } from '../../shared/constants.js';
-import { hasAccessibilityPermission } from '../lib/permissions.js';
+import { getMouseController } from './mouse-controller';
+import { getKeyboardController } from './keyboard-controller';
+import { sleep, randomDelay } from '../lib/humanize';
+import { ACTION_TYPES, EXECUTION_STATES } from '../../shared/constants';
+import { hasAccessibilityPermission } from '../lib/permissions';
 
 class WorkflowExecutor extends EventEmitter {
   constructor(options = {}) {

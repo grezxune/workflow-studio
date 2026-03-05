@@ -4,7 +4,7 @@
  * Adds human-like imprecision to click locations.
  */
 
-import { JITTER_DISTRIBUTIONS } from '../../shared/constants.js';
+import { JITTER_DISTRIBUTIONS } from '../../shared/constants';
 
 export default class ClickJitter {
   constructor(options = {}) {

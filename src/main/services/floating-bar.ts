@@ -6,11 +6,7 @@
  */
 
 import { BrowserWindow, ipcMain, screen } from 'electron';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { loadRendererPage } from '../lib/renderer-path';
 
 let floatingWindow = null;
 let mainWindow = null;
@@ -57,7 +53,7 @@ export function showFloatingBar(mainWin) {
 
   floatingWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
-  floatingWindow.loadFile(path.join(__dirname, '../../renderer/floating-bar.html'));
+  void loadRendererPage(floatingWindow, 'floating-bar.html');
 
   floatingWindow.on('closed', () => {
     floatingWindow = null;

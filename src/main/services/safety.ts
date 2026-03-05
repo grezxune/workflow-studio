@@ -6,7 +6,7 @@
 
 import { EventEmitter } from 'events';
 import { globalShortcut } from 'electron';
-import { SAFETY_KEYS } from '../../shared/constants.js';
+import { SAFETY_KEYS } from '../../shared/constants';
 
 class SafetyService extends EventEmitter {
   constructor() {
