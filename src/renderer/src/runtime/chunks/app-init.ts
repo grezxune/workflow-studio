@@ -63,6 +63,8 @@ async function initApp() {
   console.log('Workflow Studio initialized');
 }
 
+window.initApp = initApp;
+
 /**
  * Check system permissions on startup
  */

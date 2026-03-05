@@ -146,12 +146,10 @@ function initExecutionUI() {
   }
 }
 
+window.initExecutionUI = initExecutionUI;
+
 // Initialize when DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initExecutionUI);
-} else {
-  initExecutionUI();
-}
+// Execution UI initialization is triggered by runtime/bootstrap.ts.
 
 /**
  * Show execution overlay

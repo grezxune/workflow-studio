@@ -2,9 +2,10 @@
  */
 async function browseDirectory() {
   try {
+    const defaultPath = workflowsDirInput.value || await window.workflowAPI.getWorkflowsDir();
     const selectedDir = await window.workflowAPI.selectDirectory({
       title: 'Select Workflows Directory',
-      defaultPath: workflowsDirInput.value
+      defaultPath
     });
 
     if (selectedDir) {

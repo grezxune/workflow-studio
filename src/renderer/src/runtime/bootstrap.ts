@@ -108,4 +108,21 @@ export async function bootstrapRendererRuntime(): Promise<void> {
   for (const source of runtimeChunkSources) {
     await loadScriptSource(source);
   }
+
+  const runtimeWindow = window as Window & {
+    initExecutionUI?: () => void;
+    initApp?: () => Promise<void> | void;
+  };
+
+  try {
+    runtimeWindow.initExecutionUI?.();
+  } catch (error) {
+    console.error('[RendererBootstrap] Failed to initialize execution UI:', error);
+  }
+
+  try {
+    await runtimeWindow.initApp?.();
+  } catch (error) {
+    console.error('[RendererBootstrap] Failed to initialize app:', error);
+  }
 }

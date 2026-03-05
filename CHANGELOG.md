@@ -13,6 +13,10 @@ All notable changes to this project are documented in this file.
 - Switched runtime chunk loading from URL assets to inline `?raw` source injection for stable dev/packaged execution.
 - Fixed renderer startup sequencing so `initApp` and `initExecutionUI` run even when chunks load after `DOMContentLoaded`.
 - Added shared button runtime component (`ui-buttons`) to normalize button icon wrappers and enforce consistent button/icon alignment.
+- Fixed runtime initialization ordering by moving `initApp`/`initExecutionUI` invocation into `runtime/bootstrap.ts` after all chunks load.
+- Fixed Settings workflow-directory display fallback to show `settings.workflowsDir` when direct directory lookup is unavailable.
+- Hardened storage directory initialization to always normalize and create the default workflows root plus required subdirectories (`workflows`, `images`, `detections`, `templates`).
+- Updated settings directory loading/browse fallback so the workflows path remains populated even if one IPC lookup fails.
 - Added Vite/Electron build config (`electron.vite.config.ts`) and TypeScript project config (`tsconfig.json`).
 - Updated package scripts and Electron Builder file inclusion to build from `out/**`.
 - Removed obsolete JavaScript entrypoints (`src/main.js`, `src/preload.js`, `src/renderer.js`, and `src/renderer/js/**`).

@@ -174,9 +174,4 @@ function setupUpdateListeners() {
   });
 }
 
-// Initialize regardless of when runtime chunks are bootstrapped
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initApp);
-} else {
-  initApp();
-}
+// App bootstrap is executed by runtime/bootstrap.ts after all chunks load.

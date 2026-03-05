@@ -44,8 +44,10 @@ function initSettingsView() {
 
   // Display app version
   const versionEl = document.getElementById('about-version');
-  if (versionEl && window.platform?.appVersion) {
-    versionEl.textContent = `v${window.platform.appVersion}`;
+  if (versionEl) {
+    versionEl.textContent = window.platform?.appVersion
+      ? `v${window.platform.appVersion}`
+      : 'vunknown';
   }
 }
 
@@ -135,8 +137,22 @@ async function loadSettingsIntoUI() {
   state.settings = await window.workflowAPI.getSettings();
 
   // Workflows directory
-  const workflowsDir = await window.workflowAPI.getWorkflowsDir();
-  workflowsDirInput.value = workflowsDir || '';
+  let workflowsDir = '';
+  try {
+    workflowsDir = await window.workflowAPI.getWorkflowsDir();
+  } catch (error) {
+    console.error('Failed to fetch workflows directory:', error);
+  }
+
+  if (!workflowsDir) {
+    try {
+      workflowsDir = await window.workflowAPI.getSetting('workflowsDir');
+    } catch (error) {
+      console.error('Failed to fetch persisted workflows directory:', error);
+    }
+  }
+
+  workflowsDirInput.value = workflowsDir || state.settings.workflowsDir || '';
 
   // Panic hotkey
   panicHotkeyInput.value = state.settings.panicHotkey || 'F7';

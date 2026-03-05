@@ -47,31 +47,40 @@ class StorageService {
     console.log('[Storage] Configured workflows dir from store:', configuredDir);
 
     if (configuredDir && fs.existsSync(configuredDir)) {
-      this.workflowsDir = configuredDir;
-      console.log('[Storage] Using configured dir:', this.workflowsDir);
+      console.log('[Storage] Using configured dir:', configuredDir);
+      this.setWorkflowsDir(configuredDir);
     } else {
       const documentsDir = app.getPath('documents');
-      this.workflowsDir = path.join(documentsDir, 'WorkflowStudio');
-      console.log('[Storage] Using default dir:', this.workflowsDir);
+      const defaultDir = path.join(documentsDir, 'WorkflowStudio');
+      console.log('[Storage] Using default dir:', defaultDir);
+      this.setWorkflowsDir(defaultDir);
     }
 
-    this.imagesDir = path.join(this.workflowsDir, 'images');
-    this.detectionsDir = path.join(this.workflowsDir, 'detections');
-    this.templatesDir = path.join(this.workflowsDir, 'templates');
-    const workflowsSubdir = path.join(this.workflowsDir, 'workflows');
+    console.log('[Storage] Final workflows path:', this.getWorkflowsPath());
 
-    [this.workflowsDir, workflowsSubdir, this.imagesDir, this.detectionsDir, this.templatesDir].forEach(dir => {
+    // Seed sample workflow on first launch
+    this.seedSampleWorkflows();
+  }
+
+  normalizeWorkflowsRootDir(dirPath) {
+    if (path.basename(dirPath).toLowerCase() === 'workflows') {
+      return path.dirname(dirPath);
+    }
+    return dirPath;
+  }
+
+  ensureDirectoryStructure(baseDir) {
+    this.imagesDir = path.join(baseDir, 'images');
+    this.detectionsDir = path.join(baseDir, 'detections');
+    this.templatesDir = path.join(baseDir, 'templates');
+    const workflowsSubdir = path.join(baseDir, 'workflows');
+
+    [baseDir, workflowsSubdir, this.imagesDir, this.detectionsDir, this.templatesDir].forEach((dir) => {
       if (!fs.existsSync(dir)) {
         console.log('[Storage] Creating directory:', dir);
         fs.mkdirSync(dir, { recursive: true });
       }
     });
-
-    this.store.set('settings.workflowsDir', this.workflowsDir);
-    console.log('[Storage] Final workflows path:', this.getWorkflowsPath());
-
-    // Seed sample workflow on first launch
-    this.seedSampleWorkflows();
   }
 
   seedSampleWorkflows() {
@@ -316,24 +325,23 @@ class StorageService {
   }
 
   setWorkflowsDir(newDir) {
-    if (!fs.existsSync(newDir)) {
-      throw new Error('Directory does not exist');
+    if (!newDir || typeof newDir !== 'string') {
+      throw new Error('Invalid directory path');
     }
 
-    this.workflowsDir = newDir;
-    this.imagesDir = path.join(newDir, 'images');
-    this.detectionsDir = path.join(newDir, 'detections');
-
-    [path.join(newDir, 'workflows'), this.imagesDir, this.detectionsDir].forEach(dir => {
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-    });
-
-    this.store.set('settings.workflowsDir', newDir);
+    const normalizedDir = this.normalizeWorkflowsRootDir(path.resolve(newDir));
+    this.workflowsDir = normalizedDir;
+    this.ensureDirectoryStructure(normalizedDir);
+    this.store.set('settings.workflowsDir', normalizedDir);
   }
 
   getWorkflowsPath() {
+    if (!this.workflowsDir) {
+      const documentsDir = app.getPath('documents');
+      this.workflowsDir = path.join(documentsDir, 'WorkflowStudio');
+      this.ensureDirectoryStructure(this.workflowsDir);
+      this.store.set('settings.workflowsDir', this.workflowsDir);
+    }
     return path.join(this.workflowsDir, 'workflows');
   }
 
@@ -647,6 +655,19 @@ class StorageService {
   }
 
   getWorkflowsDir() {
+    if (!this.workflowsDir || !fs.existsSync(this.workflowsDir)) {
+      const configuredDir = this.store.get('settings.workflowsDir');
+      const fallbackDir = configuredDir && typeof configuredDir === 'string'
+        ? configuredDir
+        : path.join(app.getPath('documents'), 'WorkflowStudio');
+      this.setWorkflowsDir(fallbackDir);
+    }
+
+    const workflowsPath = this.getWorkflowsPath();
+    if (!fs.existsSync(workflowsPath)) {
+      fs.mkdirSync(workflowsPath, { recursive: true });
+    }
+
     return this.workflowsDir;
   }
 
