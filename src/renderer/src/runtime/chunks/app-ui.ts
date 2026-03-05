@@ -174,5 +174,9 @@ function setupUpdateListeners() {
   });
 }
 
-// Initialize on load
-document.addEventListener('DOMContentLoaded', initApp);
+// Initialize regardless of when runtime chunks are bootstrapped
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}

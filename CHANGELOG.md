@@ -11,6 +11,8 @@ All notable changes to this project are documented in this file.
 - Converted renderer runtime chunks to TypeScript source modules under `src/renderer/src/runtime/chunks/**`.
 - Refactored runtime chunks into smaller files (app/workflows/editor/images/settings/execution/hotkeys/quick-record) loaded in deterministic order.
 - Switched runtime chunk loading from URL assets to inline `?raw` source injection for stable dev/packaged execution.
+- Fixed renderer startup sequencing so `initApp` and `initExecutionUI` run even when chunks load after `DOMContentLoaded`.
+- Added shared button runtime component (`ui-buttons`) to normalize button icon wrappers and enforce consistent button/icon alignment.
 - Added Vite/Electron build config (`electron.vite.config.ts`) and TypeScript project config (`tsconfig.json`).
 - Updated package scripts and Electron Builder file inclusion to build from `out/**`.
 - Removed obsolete JavaScript entrypoints (`src/main.js`, `src/preload.js`, `src/renderer.js`, and `src/renderer/js/**`).

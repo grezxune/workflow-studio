@@ -49,6 +49,8 @@ Workflow Studio aims to be a premium automation tool for gamers. The visual work
 - Primary renderer migrated to React + TypeScript entrypoint (`src/renderer/src/main.tsx`).
 - Renderer runtime was decomposed from a monolithic compatibility file into modular TypeScript chunks (`src/renderer/src/runtime/chunks/**`) loaded by typed bootstrap (`src/renderer/src/runtime/bootstrap.ts`).
 - Runtime chunk loading uses deterministic bootstrap sequencing with raw chunk injection to preserve existing behavior while enabling incremental typed refactors.
+- Shared button presentation is now normalized through a runtime button component (`ui-buttons`) to enforce consistent icon alignment and interaction styling across views.
+- Runtime initialization guards now execute app boot logic even when renderer chunks are injected after DOM ready, preventing inert navigation/action controls.
 - Secondary overlay windows remain file-based (`position-picker`, `region-select`, `workflow-preview`, `floating-bar`, `quick-record`, `capture-preview`) and are loaded through shared dev/prod URL resolution.
 
 ## Personas & Journeys

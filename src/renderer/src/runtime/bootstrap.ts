@@ -1,3 +1,4 @@
+import uiButtonsChunkSource from './chunks/ui-buttons.ts?raw';
 import appInitChunkSource from './chunks/app-init.ts?raw';
 import appIpcChunkSource from './chunks/app-ipc.ts?raw';
 import appUiChunkSource from './chunks/app-ui.ts?raw';
@@ -39,6 +40,7 @@ import quickRecordCoreChunkSource from './chunks/quick-record-core.ts?raw';
 import quickRecordActionsChunkSource from './chunks/quick-record-actions.ts?raw';
 
 const runtimeChunkSources = [
+  uiButtonsChunkSource,
   appInitChunkSource,
   appIpcChunkSource,
   appUiChunkSource,

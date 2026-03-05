@@ -147,7 +147,11 @@ function initExecutionUI() {
 }
 
 // Initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', initExecutionUI);
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initExecutionUI);
+} else {
+  initExecutionUI();
+}
 
 /**
  * Show execution overlay

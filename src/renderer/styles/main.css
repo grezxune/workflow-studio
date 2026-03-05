@@ -209,6 +209,12 @@ body {
   height: 18px;
 }
 
+.nav-tab.ui-btn .btn-icon-slot {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+}
+
 .nav-tab:hover {
   background: var(--bg-tertiary);
   color: var(--text-primary);
