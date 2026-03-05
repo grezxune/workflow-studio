@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react';
-import legacyDocument from '../legacy/index.legacy.html?raw';
+import appShellDocument from './runtime/app-shell.html?raw';
+import { bootstrapRendererRuntime } from './runtime/bootstrap';
 
 function extractLegacyShell(html: string): string {
   if (typeof DOMParser === 'undefined') {
@@ -13,17 +14,17 @@ function extractLegacyShell(html: string): string {
 
 /**
  * React host component for the migrated renderer shell.
- * Existing feature behavior is preserved through typed legacy modules.
+ * Existing feature behavior is preserved through modular runtime chunks.
  */
 export function App() {
-  const shellMarkup = useMemo(() => extractLegacyShell(legacyDocument), []);
+  const shellMarkup = useMemo(() => extractLegacyShell(appShellDocument), []);
 
   useEffect(() => {
-    if ((window as Window & { __workflowLegacyBootstrapped?: boolean }).__workflowLegacyBootstrapped) {
+    if ((window as Window & { __workflowRuntimeBootstrapped?: boolean }).__workflowRuntimeBootstrapped) {
       return;
     }
-    (window as Window & { __workflowLegacyBootstrapped?: boolean }).__workflowLegacyBootstrapped = true;
-    void import('../legacy/legacy-app');
+    (window as Window & { __workflowRuntimeBootstrapped?: boolean }).__workflowRuntimeBootstrapped = true;
+    void bootstrapRendererRuntime();
   }, []);
 
   return <div dangerouslySetInnerHTML={{ __html: shellMarkup }} />;
