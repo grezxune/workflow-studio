@@ -53,7 +53,7 @@ export function listSupportedGames() {
  * @param {string | null | undefined} gameId
  * @returns {object | null}
  */
-export function getGameContextPackById(gameId) {
+export function getGameContextPackById(gameId: string | null | undefined) {
   if (!gameId || gameId === 'generic') return null;
   return GAME_PACK_INDEX.get(gameId) || null;
 }
@@ -80,4 +80,3 @@ export function inferGameContextFromPrompt(prompt) {
 
   return { pack: null, confidence: 0, matchedAlias: null };
 }
-

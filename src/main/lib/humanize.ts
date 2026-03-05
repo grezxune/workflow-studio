@@ -109,7 +109,7 @@ export function shouldOvershoot(distance, frequency = 0.15) {
 /**
  * Calculate overshoot distance
  */
-export function calculateOvershoot(distance, config = {}) {
+export function calculateOvershoot(distance: number, config: any = {}) {
   const minMult = config.distanceMultiplier?.min ?? 0.05;
   const maxMult = config.distanceMultiplier?.max ?? 0.15;
   const multiplier = minMult + Math.random() * (maxMult - minMult);
@@ -119,7 +119,7 @@ export function calculateOvershoot(distance, config = {}) {
 /**
  * Calculate correction movement speed
  */
-export function correctionDuration(baseDuration, config = {}) {
+export function correctionDuration(baseDuration: number, config: any = {}) {
   const minSpeed = config.correctionSpeed?.min ?? 0.3;
   const maxSpeed = config.correctionSpeed?.max ?? 0.6;
   const speedMultiplier = minSpeed + Math.random() * (maxSpeed - minSpeed);
@@ -129,7 +129,7 @@ export function correctionDuration(baseDuration, config = {}) {
 /**
  * Get pause duration before correction
  */
-export function pauseBeforeCorrection(config = {}) {
+export function pauseBeforeCorrection(config: any = {}) {
   const min = config.pauseBeforeCorrection?.min ?? 50;
   const max = config.pauseBeforeCorrection?.max ?? 150;
   return randomDelay(min, max);

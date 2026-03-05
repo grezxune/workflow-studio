@@ -12,7 +12,9 @@ import { ACTION_TYPES, EXECUTION_STATES } from '../../shared/constants';
 import { hasAccessibilityPermission } from '../lib/permissions';
 
 class WorkflowExecutor extends EventEmitter {
-  constructor(options = {}) {
+  [key: string]: any;
+
+  constructor(options: any = {}) {
     super();
 
     this.mouseController = getMouseController(options.mouse);
@@ -29,7 +31,7 @@ class WorkflowExecutor extends EventEmitter {
     this.lastDetection = null;
   }
 
-  async execute(workflow, options = {}) {
+  async execute(workflow: any, options: any = {}) {
     console.log('[Executor] execute() called with options:', JSON.stringify(options));
 
     if (this.state === EXECUTION_STATES.RUNNING) {
@@ -240,7 +242,7 @@ class WorkflowExecutor extends EventEmitter {
   }
 
   async performMouseClick(action) {
-    const options = {
+    const options: any = {
       button: action.button || 'left',
       clickType: action.clickType || 'single',
       jitter: action.jitter !== false,
@@ -558,7 +560,7 @@ class WorkflowExecutor extends EventEmitter {
 
 let instance = null;
 
-export function getWorkflowExecutor(options) {
+export function getWorkflowExecutor(options: any = {}) {
   if (!instance) {
     instance = new WorkflowExecutor(options);
   }

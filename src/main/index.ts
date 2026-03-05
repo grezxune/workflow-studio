@@ -43,7 +43,7 @@ function createWindow() {
       preload: getPreloadPath(),
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false
+      sandbox: true
     },
     icon: getIconPath(),
     show: false
@@ -166,7 +166,7 @@ function initializeSafety() {
 function createMenu() {
   const isMac = process.platform === 'darwin';
 
-  const template = [
+  const template: any[] = [
     ...(isMac ? [{
       label: 'Workflow Studio',
       submenu: [

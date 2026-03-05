@@ -7,7 +7,9 @@
  */
 
 class WindMouse {
-  constructor(options = {}) {
+  [key: string]: any;
+
+  constructor(options: any = {}) {
     this.gravity = options.gravity ?? 9.0;
     this.wind = options.wind ?? 3.0;
     this.minWait = options.minWait ?? 2;

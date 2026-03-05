@@ -17,7 +17,9 @@ import {
 import { CLICK_BUTTONS, CLICK_TYPES, DEFAULT_SETTINGS } from '../../shared/constants';
 
 class MouseController {
-  constructor(settings = {}) {
+  [key: string]: any;
+
+  constructor(settings: any = {}) {
     this.windMouse = new WindMouse(settings.windMouse || DEFAULT_SETTINGS.windMouse);
     this.clickJitter = new ClickJitter(settings.clickJitter || DEFAULT_SETTINGS.clickJitter);
     this.overshootConfig = settings.overshoot || DEFAULT_SETTINGS.overshoot;
@@ -27,7 +29,7 @@ class MouseController {
     mouse.config.mouseSpeed = 1000;
   }
 
-  async moveTo(x, y, options = {}) {
+  async moveTo(x: number, y: number, options: any = {}) {
     console.log(`[MouseController] moveTo(${x}, ${y})`);
     try {
       const currentPos = await mouse.getPosition();
@@ -53,7 +55,7 @@ class MouseController {
   /**
    * Clamp a point to stay within bounds { left, top, right, bottom }
    */
-  clampToBounds(x, y, bounds) {
+  clampToBounds(x: number, y: number, bounds: any) {
     if (!bounds) return { x, y };
     return {
       x: Math.round(Math.max(bounds.left, Math.min(bounds.right, x))),
@@ -61,7 +63,7 @@ class MouseController {
     };
   }
 
-  async moveDirectly(startX, startY, endX, endY, options = {}) {
+  async moveDirectly(startX: number, startY: number, endX: number, endY: number, options: any = {}) {
     const targetDuration = options.duration ?? this.mouseMoveDuration;
     console.log(`[MouseController] moveDirectly from (${startX}, ${startY}) to (${endX}, ${endY}), targetDuration=${targetDuration}ms, mouseMoveDuration=${this.mouseMoveDuration}ms`);
     try {
@@ -133,7 +135,7 @@ class MouseController {
     return path.map(p => ({ ...p, delay: Math.round(p.delay * scale) }));
   }
 
-  async moveWithOvershoot(startX, startY, endX, endY, options = {}) {
+  async moveWithOvershoot(startX: number, startY: number, endX: number, endY: number, options: any = {}) {
     const distance = Math.hypot(endX - startX, endY - startY);
     const overshootDist = calculateOvershoot(distance, this.overshootConfig);
     const bounds = options.bounds;
@@ -188,7 +190,7 @@ class MouseController {
     }
   }
 
-  async click(options = {}) {
+  async click(options: any = {}) {
     const {
       button = CLICK_BUTTONS.LEFT,
       clickType = CLICK_TYPES.SINGLE,
@@ -292,7 +294,7 @@ class MouseController {
 
 let instance = null;
 
-export function getMouseController(settings) {
+export function getMouseController(settings: any = {}) {
   if (!instance) {
     instance = new MouseController(settings);
   }

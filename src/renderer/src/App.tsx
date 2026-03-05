@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react';
+import parse from 'html-react-parser';
 import appShellDocument from './runtime/app-shell.html?raw';
 import { bootstrapRendererRuntime } from './runtime/bootstrap';
 
@@ -18,6 +19,7 @@ function extractLegacyShell(html: string): string {
  */
 export function App() {
   const shellMarkup = useMemo(() => extractLegacyShell(appShellDocument), []);
+  const shellNode = useMemo(() => parse(shellMarkup), [shellMarkup]);
 
   useEffect(() => {
     if ((window as Window & { __workflowRuntimeBootstrapped?: boolean }).__workflowRuntimeBootstrapped) {
@@ -27,5 +29,5 @@ export function App() {
     void bootstrapRendererRuntime();
   }, []);
 
-  return <div dangerouslySetInnerHTML={{ __html: shellMarkup }} />;
+  return <>{shellNode}</>;
 }

@@ -212,7 +212,7 @@ function closePreviewWindow() {
  * @param {string} defaultName - Default name for the image
  * @returns {Promise<{decision: 'confirm'|'redo'|'cancel', name?: string}>}
  */
-function showCapturePreview(imagePath, region, defaultName) {
+function showCapturePreview(imagePath: string, region: any, defaultName: string): Promise<any> {
   return new Promise((resolve) => {
     previewResolve = resolve;
 
@@ -354,7 +354,7 @@ export function initRegionSelectorIPC() {
   });
 
   // Handler to capture a region and save as template (with preview/redo loop)
-  ipcMain.handle('capture-region-template', async (event, options = {}) => {
+  ipcMain.handle('capture-region-template', async (event, options: any = {}) => {
     try {
       const detection = getDetectionService();
 

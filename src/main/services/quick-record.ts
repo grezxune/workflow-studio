@@ -41,7 +41,7 @@ function getAllDisplaysBounds() {
 /**
  * Start quick record mode
  */
-export function startQuickRecord(options = {}, mainWin) {
+export function startQuickRecord(options: any = {}, mainWin: any) {
   return new Promise((resolve, reject) => {
     if (quickRecordWindow) {
       resolve({ cancelled: true });

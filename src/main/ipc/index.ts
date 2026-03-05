@@ -75,7 +75,7 @@ export function initializeIPC(window) {
   initHotkeyService(mainWindow);
 }
 
-function sendToRenderer(channel, data) {
+function sendToRenderer(channel: string, data?: any) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, data);
   }
@@ -120,7 +120,7 @@ function setupExecutorEvents(executor) {
       text: `${displayName} (${data.index + 1}/${data.total})`
     });
     if (actionType !== 'wait') {
-      floatingBar.sendToFloatingBar('floating-bar:wait-hide');
+      floatingBar.sendToFloatingBar('floating-bar:wait-hide', {});
     }
   });
 
@@ -601,7 +601,7 @@ function registerHotkeyHandlers() {
 }
 
 export function cleanupIPC() {
-  Object.values(IPC_CHANNELS).forEach(channel => {
+  (Object.values(IPC_CHANNELS) as string[]).forEach((channel) => {
     ipcMain.removeHandler(channel);
   });
 

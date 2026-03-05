@@ -9,6 +9,8 @@ import { globalShortcut } from 'electron';
 import { SAFETY_KEYS } from '../../shared/constants';
 
 class SafetyService extends EventEmitter {
+  [key: string]: any;
+
   constructor() {
     super();
     this.panicHotkey = SAFETY_KEYS.PANIC;
@@ -22,7 +24,7 @@ class SafetyService extends EventEmitter {
     this.deadManSwitchTimer = null;
   }
 
-  initialize(options = {}) {
+  initialize(options: any = {}) {
     if (options.panicHotkey) {
       this.panicHotkey = options.panicHotkey;
     }

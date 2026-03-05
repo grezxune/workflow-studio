@@ -7,7 +7,9 @@
 import { JITTER_DISTRIBUTIONS } from '../../shared/constants';
 
 export default class ClickJitter {
-  constructor(options = {}) {
+  [key: string]: any;
+
+  constructor(options: any = {}) {
     this.enabled = options.enabled ?? true;
     this.radius = options.radius ?? 3;
     this.distribution = options.distribution ?? JITTER_DISTRIBUTIONS.GAUSSIAN;
@@ -62,7 +64,7 @@ export default class ClickJitter {
   /**
    * Update jitter settings
    */
-  setConfig(options) {
+  setConfig(options: any) {
     if (options.enabled !== undefined) this.enabled = options.enabled;
     if (options.radius !== undefined) {
       this.radius = options.radius;

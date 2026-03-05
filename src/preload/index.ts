@@ -6,9 +6,7 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron';
-import { createRequire } from 'node:module';
-
-const require = createRequire(import.meta.url);
+import packageJson from '../../package.json';
 
 // IPC Channels (inlined since preload can't import ES modules)
 // MUST MATCH src/shared/constants.js exactly!
@@ -535,7 +533,7 @@ contextBridge.exposeInMainWorld('platform', {
   isWindows: process.platform === 'win32',
   isLinux: process.platform === 'linux',
   platform: process.platform,
-  appVersion: require('../../package.json').version
+  appVersion: packageJson.version
 });
 
 // Listen for navigation commands from main process

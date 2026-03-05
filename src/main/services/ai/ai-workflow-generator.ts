@@ -29,7 +29,7 @@ let cachedModels = { ids: null, fetchedAt: 0 };
  * }} options
  * @returns {Promise<{success: boolean, error?: string, data?: object, meta?: object}>}
  */
-export async function generateWorkflowDraftWithAI(request, options = {}) {
+export async function generateWorkflowDraftWithAI(request: any, options: any = {}) {
   const prompt = (request?.prompt || '').trim();
   if (!prompt) {
     return { success: false, error: 'Prompt is required.' };
@@ -92,7 +92,7 @@ export async function generateWorkflowDraftWithAI(request, options = {}) {
   };
 }
 
-function resolveGameContext(selectedGameId, prompt) {
+function resolveGameContext(selectedGameId: string | null | undefined, prompt: string) {
   const selectedPack = getGameContextPackById(selectedGameId);
   if (selectedPack) {
     return { pack: selectedPack, source: 'selector', confidence: 1 };
@@ -106,7 +106,7 @@ function resolveGameContext(selectedGameId, prompt) {
   return { pack: null, source: 'generic', confidence: 1 };
 }
 
-async function resolveModel(preferredModel) {
+async function resolveModel(preferredModel: string) {
   const preferred = MODEL_CHAIN[preferredModel] ? preferredModel : DEFAULT_MODEL_PREFERENCE;
   const available = await fetchAvailableModelIds();
   const chain = MODEL_CHAIN[preferred];

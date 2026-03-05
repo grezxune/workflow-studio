@@ -12,17 +12,29 @@ import { v4 as uuidv4 } from 'uuid';
 import { DEFAULT_SETTINGS } from '../../shared/constants';
 
 class StorageService {
+  [key: string]: any;
+
   constructor() {
     console.log('[Storage] Initializing StorageService...');
     try {
-      this.store = new Store({
+      const encryptionKey = process.env.WORKFLOW_STUDIO_STORE_KEY;
+      if (!encryptionKey) {
+        console.warn('[Storage] WORKFLOW_STUDIO_STORE_KEY is not set; settings will be stored without encryption.');
+      }
+
+      const storeOptions: any = {
         name: 'config',
-        encryptionKey: 'workflow-studio-v1',
         defaults: {
           settings: DEFAULT_SETTINGS,
           recentWorkflows: []
         }
-      });
+      };
+
+      if (encryptionKey) {
+        storeOptions.encryptionKey = encryptionKey;
+      }
+
+      this.store = new Store(storeOptions);
       console.log('[Storage] Store created successfully');
     } catch (error) {
       console.error('[Storage] Failed to create store:', error);
@@ -370,7 +382,7 @@ class StorageService {
     }
 
     console.log('[Storage] Loaded', workflows.length, 'workflows');
-    workflows.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    workflows.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
     return workflows;
   }
 
@@ -390,7 +402,7 @@ class StorageService {
     }
   }
 
-  createWorkflow(data = {}) {
+  createWorkflow(data: any = {}) {
     const id = uuidv4();
     const now = new Date().toISOString();
 
@@ -721,7 +733,7 @@ class StorageService {
     }
 
     console.log('[Storage] Loaded', templates.length, 'templates');
-    templates.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    templates.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
     return templates;
   }
 
@@ -741,7 +753,7 @@ class StorageService {
     }
   }
 
-  createTemplate(data = {}) {
+  createTemplate(data: any = {}) {
     const id = uuidv4();
     const now = new Date().toISOString();
 

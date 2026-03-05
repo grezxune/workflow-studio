@@ -9,12 +9,12 @@ import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 import { ipcMain } from 'electron';
 
-let mainWindow = null;
+let mainWindow: any = null;
 
 /**
  * Initialize the auto-updater
  */
-export function initAutoUpdater(win) {
+export function initAutoUpdater(win: any) {
   mainWindow = win;
 
   // Don't auto-install on download — let the user choose when to restart
@@ -81,14 +81,14 @@ export function initAutoUpdater(win) {
     try {
       const result = await autoUpdater.checkForUpdates();
       return { success: true, version: result?.updateInfo?.version };
-    } catch (err) {
+    } catch (err: any) {
       return { success: false, error: err.message };
     }
   });
 
   // Check for updates after a short delay (let the app finish loading)
   setTimeout(() => {
-    autoUpdater.checkForUpdates().catch(err => {
+    autoUpdater.checkForUpdates().catch((err: any) => {
       console.error('[AutoUpdater] Initial check failed:', err.message);
     });
   }, 5000);
@@ -99,7 +99,7 @@ export function initAutoUpdater(win) {
   }, 30 * 60 * 1000);
 }
 
-function sendToRenderer(channel, data) {
+function sendToRenderer(channel: string, data?: any) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, data);
   }

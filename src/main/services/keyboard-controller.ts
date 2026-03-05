@@ -8,12 +8,14 @@ import { keyboard, Key } from '@nut-tree-fork/nut-js';
 import { generateTypingDelays, sleep, randomDelay } from '../lib/humanize';
 
 class KeyboardController {
-  constructor(settings = {}) {
+  [key: string]: any;
+
+  constructor(settings: any = {}) {
     this.defaultSpeed = settings.typingSpeed || { min: 50, max: 150 };
     keyboard.config.autoDelayMs = 0;
   }
 
-  async type(text, options = {}) {
+  async type(text: string, options: any = {}) {
     const speed = options.speed || this.defaultSpeed;
     const delays = generateTypingDelays(text, speed.min, speed.max);
 
@@ -27,7 +29,7 @@ class KeyboardController {
     }
   }
 
-  async press(keyCombo) {
+  async press(keyCombo: string) {
     const keys = this.parseKeyCombo(keyCombo);
 
     if (keys.length === 1) {
@@ -49,26 +51,26 @@ class KeyboardController {
     }
   }
 
-  async pressKey(keyCombo) {
+  async pressKey(keyCombo: string) {
     const keys = this.parseKeyCombo(keyCombo);
     for (const key of keys) {
       await keyboard.pressKey(key);
     }
   }
 
-  async releaseKey(keyCombo) {
+  async releaseKey(keyCombo: string) {
     const keys = this.parseKeyCombo(keyCombo);
     for (const key of keys.reverse()) {
       await keyboard.releaseKey(key);
     }
   }
 
-  parseKeyCombo(combo) {
+  parseKeyCombo(combo: string) {
     const parts = combo.toLowerCase().split('+').map(p => p.trim());
     return parts.map(part => this.getKey(part));
   }
 
-  getKey(keyStr) {
+  getKey(keyStr: string) {
     const keyMap = {
       'ctrl': Key.LeftControl,
       'control': Key.LeftControl,
@@ -142,7 +144,7 @@ class KeyboardController {
     }
   }
 
-  updateSettings(settings) {
+  updateSettings(settings: any) {
     if (settings.typingSpeed) {
       this.defaultSpeed = settings.typingSpeed;
     }
@@ -151,7 +153,7 @@ class KeyboardController {
 
 let instance = null;
 
-export function getKeyboardController(settings) {
+export function getKeyboardController(settings: any = {}) {
   if (!instance) {
     instance = new KeyboardController(settings);
   }

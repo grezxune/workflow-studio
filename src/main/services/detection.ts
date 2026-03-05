@@ -17,7 +17,9 @@ const { cv } = require('opencv-wasm');
 const Jimp = require('jimp');
 
 class DetectionService {
-  constructor(options = {}) {
+  [key: string]: any;
+
+  constructor(options: any = {}) {
     this.defaultConfidence = options.confidence || 0.9;
     this.defaultMethod = options.method || DETECTION_METHODS.TEMPLATE;
     this.storage = null;
@@ -83,7 +85,7 @@ class DetectionService {
    * Convert a nut-js screen capture directly to an OpenCV matrix (no temp file).
    * The capture data is BGRA, 4 channels.
    */
-  captureToMat(capture) {
+  captureToMat(capture: any) {
     const width = capture.width;
     const height = capture.height;
     const data = capture.data;
@@ -100,7 +102,7 @@ class DetectionService {
     return cv.matFromImageData({ data: rgba, width, height });
   }
 
-  async findImage(imageId, options = {}) {
+  async findImage(imageId: string, options: any = {}) {
     const imagePath = this.getStorage().getImagePath(imageId);
 
     if (!fs.existsSync(imagePath)) {
@@ -251,7 +253,7 @@ class DetectionService {
     }
   }
 
-  async findPixel(color, options = {}) {
+  async findPixel(color: any, options: any = {}) {
     const tolerance = options.tolerance || 10;
     const region = options.region;
 
@@ -348,7 +350,7 @@ class DetectionService {
     return { width, height };
   }
 
-  async waitForImage(imageId, options = {}) {
+  async waitForImage(imageId: string, options: any = {}) {
     const timeout = options.timeout || 30000;
     const interval = options.interval || 500;
     const startTime = Date.now();
@@ -364,7 +366,7 @@ class DetectionService {
     return null;
   }
 
-  async waitForImageGone(imageId, options = {}) {
+  async waitForImageGone(imageId: string, options: any = {}) {
     const timeout = options.timeout || 30000;
     const interval = options.interval || 500;
     const startTime = Date.now();
@@ -393,7 +395,7 @@ class DetectionService {
 
 let instance = null;
 
-export function getDetectionService(options) {
+export function getDetectionService(options: any = {}) {
   if (!instance) {
     instance = new DetectionService(options);
   }
