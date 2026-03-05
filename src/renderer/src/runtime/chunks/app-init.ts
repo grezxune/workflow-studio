@@ -25,6 +25,8 @@ const elements = {
   modal: null
 };
 
+let mainProcessBridgeInitialized = false;
+
 /**
  * Initialize the application
  */
@@ -34,6 +36,7 @@ async function initApp() {
 
   // Setup navigation
   setupNavigation();
+  setupMainProcessBridge();
 
   // Initialize views first (sets up DOM references)
   initWorkflowsView();
@@ -113,6 +116,62 @@ function setupNavigation() {
 
     const view = tab.dataset.view;
     navigateTo(view);
+  });
+}
+
+/**
+ * Bridge native menu actions/navigation from preload into renderer runtime handlers.
+ */
+function setupMainProcessBridge() {
+  if (mainProcessBridgeInitialized) {
+    return;
+  }
+  mainProcessBridgeInitialized = true;
+
+  window.addEventListener('app:navigate', (event) => {
+    const path = event?.detail?.path;
+    if (typeof path !== 'string') return;
+    const view = path.replace(/^\//, '').trim();
+    if (!view) return;
+    navigateTo(view);
+  });
+
+  window.addEventListener('app:action', (event) => {
+    const action = event?.detail?.action;
+    if (typeof action !== 'string') return;
+
+    switch (action) {
+      case 'new-workflow':
+        void createNewWorkflow();
+        break;
+      case 'import-workflow':
+        void importWorkflow();
+        break;
+      case 'export-workflow':
+        if (state.currentWorkflow?.id) {
+          void exportWorkflow(state.currentWorkflow.id);
+        } else {
+          void exportAllWorkflows();
+        }
+        break;
+      case 'run-workflow':
+        if (typeof runCurrentWorkflow === 'function') {
+          void runCurrentWorkflow(false);
+        }
+        break;
+      case 'dry-run-workflow':
+        if (typeof runCurrentWorkflow === 'function') {
+          void runCurrentWorkflow(true);
+        }
+        break;
+      case 'pause-workflow':
+        if ((state.executionState === 'running' || state.executionState === 'paused') && typeof togglePause === 'function') {
+          void togglePause();
+        }
+        break;
+      default:
+        console.warn('[App] Unknown main-process action:', action);
+    }
   });
 }
 

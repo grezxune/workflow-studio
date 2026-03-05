@@ -54,6 +54,7 @@ Workflow Studio aims to be a premium automation tool for gamers. The visual work
 - Runtime bootstrap is now the single source of truth for app/view initialization sequencing (`initApp`, `initExecutionUI`) after chunk registration.
 - Settings UI now falls back to persisted `settings.workflowsDir` when direct directory lookup is temporarily unavailable, preventing blank default directory display.
 - Storage directory handling now normalizes selected workflow roots and always creates the full default directory structure, ensuring `~/Documents/WorkflowStudio/workflows/` exists by default.
+- Renderer now bridges preload-dispatched native menu events (`app:navigate`, `app:action`) back into runtime navigation and workflow command handlers for consistent menu/shortcut behavior.
 - Secondary overlay windows remain file-based (`position-picker`, `region-select`, `workflow-preview`, `floating-bar`, `quick-record`, `capture-preview`) and are loaded through shared dev/prod URL resolution.
 
 ## Personas & Journeys

@@ -148,5 +148,3 @@ async function deleteWorkflow(workflowId) {
     showToast('error', 'Error', 'Failed to delete workflow');
   }
 }
-
-/**

@@ -186,5 +186,3 @@ async function loadSettingsIntoUI() {
   // Load image gallery
   loadImageGallery();
 }
-
-/**

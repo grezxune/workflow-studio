@@ -1,3 +1,4 @@
+/**
  * Escape HTML to prevent XSS
  */
 function escapeHtml(str) {
@@ -127,4 +128,3 @@ function addToExecutionHistory(entry) {
   saveExecutionHistory();
   renderExecutionHistory();
 }
-

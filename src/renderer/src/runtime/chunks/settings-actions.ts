@@ -1,3 +1,4 @@
+/**
  * Browse for workflows directory
  */
 async function browseDirectory() {

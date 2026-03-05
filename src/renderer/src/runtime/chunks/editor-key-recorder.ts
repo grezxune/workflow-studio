@@ -1,3 +1,4 @@
+/**
  * Setup the key recorder widget for keyboard action config.
  * Listens for real keydown events and builds a combo string (e.g. "ctrl+shift+a").
  */

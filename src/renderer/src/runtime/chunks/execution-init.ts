@@ -234,5 +234,3 @@ function updateLoopProgress(data) {
 
   updateProgressDisplay();
 }
-
-/**

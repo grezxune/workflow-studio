@@ -17,6 +17,8 @@ All notable changes to this project are documented in this file.
 - Fixed Settings workflow-directory display fallback to show `settings.workflowsDir` when direct directory lookup is unavailable.
 - Hardened storage directory initialization to always normalize and create the default workflows root plus required subdirectories (`workflows`, `images`, `detections`, `templates`).
 - Updated settings directory loading/browse fallback so the workflows path remains populated even if one IPC lookup fails.
+- Repaired split runtime chunk boundaries that left malformed doc comments, restoring parser-safe chunk loading across settings/workflows/execution/editor helpers.
+- Added renderer bridge handlers for preload-dispatched `app:navigate` and `app:action` events so native menu actions and shortcuts route to the active UI flows.
 - Added Vite/Electron build config (`electron.vite.config.ts`) and TypeScript project config (`tsconfig.json`).
 - Updated package scripts and Electron Builder file inclusion to build from `out/**`.
 - Removed obsolete JavaScript entrypoints (`src/main.js`, `src/preload.js`, `src/renderer.js`, and `src/renderer/js/**`).

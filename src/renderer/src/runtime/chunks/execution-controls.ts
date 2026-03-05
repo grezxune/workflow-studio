@@ -1,3 +1,4 @@
+/**
  * Update the progress display
  */
 function updateProgressDisplay() {
@@ -113,4 +114,3 @@ function hideWaitCountdown() {
     waitCountdown.classList.add('hidden');
   }
 }
-
