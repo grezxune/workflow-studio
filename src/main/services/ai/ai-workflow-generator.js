@@ -37,7 +37,7 @@ export async function generateWorkflowDraftWithAI(request, options = {}) {
 
   const apiKey = options.settings?.ai?.openRouterApiKey?.trim();
   if (!apiKey) {
-    return { success: false, error: 'OpenRouter API key is missing. Set it in Settings > AI Assistant.' };
+    return { success: false, error: 'API key is missing. Set it in Settings \u2192 AI Assistant.' };
   }
 
   const preferredModel =
@@ -127,7 +127,7 @@ async function fetchAvailableModelIds() {
   try {
     const response = await fetch(OPENROUTER_MODELS_URL, { method: 'GET' });
     if (!response.ok) {
-      throw new Error(`OpenRouter models request failed: ${response.status}`);
+      throw new Error(`Model list request failed: ${response.status}`);
     }
     const payload = await response.json();
     const ids = new Set((payload?.data || []).map((model) => model.id).filter(Boolean));
@@ -228,7 +228,7 @@ async function callOpenRouter({ apiKey, model, systemPrompt, userPayload }) {
       payload = null;
     }
     if (!response.ok) {
-      const message = payload?.error?.message || `OpenRouter request failed: ${response.status}`;
+      const message = payload?.error?.message || `AI request failed: ${response.status}`;
       return { success: false, error: message };
     }
 
@@ -246,7 +246,7 @@ async function callOpenRouter({ apiKey, model, systemPrompt, userPayload }) {
     if (error.name === 'AbortError') {
       return { success: false, error: 'AI request timed out after 30 seconds.' };
     }
-    return { success: false, error: error.message || 'Failed to call OpenRouter.' };
+    return { success: false, error: error.message || 'Failed to reach AI service.' };
   } finally {
     clearTimeout(timeout);
   }

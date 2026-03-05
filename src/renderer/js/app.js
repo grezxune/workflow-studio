@@ -120,6 +120,12 @@ function setupNavigation() {
 function navigateTo(viewName) {
   if (!elements.views[viewName]) return;
 
+  // If navigating to editor with no workflow loaded, auto-create one
+  if (viewName === 'editor' && !state.currentWorkflow) {
+    createNewWorkflow();
+    return;
+  }
+
   // Update tabs
   document.querySelectorAll('.nav-tab').forEach(tab => {
     tab.classList.toggle('active', tab.dataset.view === viewName);
@@ -131,6 +137,34 @@ function navigateTo(viewName) {
   });
 
   state.currentView = viewName;
+
+  // Refresh the target view so it always reflects current state
+  refreshView(viewName);
+}
+
+/**
+ * Refresh a view's rendered content from current in-memory state.
+ * Called automatically on every tab switch so all views stay in sync.
+ */
+function refreshView(viewName) {
+  switch (viewName) {
+    case 'workflows':
+      renderWorkflowList();
+      renderRecentWorkflows();
+      break;
+    case 'editor':
+      // Editor is always kept in sync via direct state.currentWorkflow binding
+      break;
+    case 'hotkeys':
+      loadHotkeys();
+      break;
+    case 'images':
+      loadImagesAndFolders();
+      break;
+    case 'settings':
+      // Settings view reads from state.settings which is kept in sync
+      break;
+  }
 }
 
 /**

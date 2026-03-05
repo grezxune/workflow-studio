@@ -27,7 +27,6 @@ class WorkflowExecutor extends EventEmitter {
     this.shouldStop = false;
     this.dryRun = false;
     this.lastDetection = null;
-    this.clickAnchors = new Map();
   }
 
   async execute(workflow, options = {}) {
@@ -52,31 +51,30 @@ class WorkflowExecutor extends EventEmitter {
     this.isPaused = false;
     this.shouldStop = false;
     this.dryRun = options.dryRun || false;
-    this.clickAnchors.clear();
+    const infinite = !!workflow.infiniteLoop;
+    const totalLoops = infinite ? Infinity : (workflow.loopCount || 1);
 
     console.log(`[Executor] Starting workflow: ${workflow.name}`);
-    console.log(`[Executor] Actions: ${workflow.actions?.length || 0}, Loops: ${workflow.loopCount || 1}, DryRun: ${this.dryRun}`);
-
-    const totalLoops = workflow.loopCount || 1;
+    console.log(`[Executor] Actions: ${workflow.actions?.length || 0}, Loops: ${infinite ? '∞' : totalLoops}, DryRun: ${this.dryRun}`);
 
     this.setState(EXECUTION_STATES.RUNNING);
-    this.emit('workflow:start', { workflow, totalLoops });
+    this.emit('workflow:start', { workflow, totalLoops: infinite ? '∞' : totalLoops });
 
     try {
-      for (let loop = 0; loop < totalLoops && !this.shouldStop; loop++) {
+      for (let loop = 0; (infinite || loop < totalLoops) && !this.shouldStop; loop++) {
         this.currentLoop = loop + 1;
-        this.emit('loop:start', { loop: loop + 1, total: totalLoops });
+        this.emit('loop:start', { loop: loop + 1, total: infinite ? '∞' : totalLoops });
 
         await this.executeActions(workflow.actions);
 
-        if (loop < totalLoops - 1 && !this.shouldStop) {
+        if (!this.shouldStop && (infinite || loop < totalLoops - 1)) {
           const loopDelay = workflow.loopDelay || { min: 500, max: 1000 };
           const delay = randomDelay(loopDelay.min, loopDelay.max);
           this.emit('loop:delay', { delay });
           await sleep(delay);
         }
 
-        this.emit('loop:end', { loop: loop + 1, total: totalLoops });
+        this.emit('loop:end', { loop: loop + 1, total: infinite ? '∞' : totalLoops });
       }
 
       if (this.shouldStop) {
@@ -257,14 +255,9 @@ class WorkflowExecutor extends EventEmitter {
         y: this.lastDetection.y + (action.offsetY || 0)
       };
     } else {
-      // No explicit position — anchor to cursor position at first execution
-      // so jitter doesn't drift across loop iterations
-      const anchorKey = this.currentActionIndex;
-      if (!this.clickAnchors.has(anchorKey)) {
-        const pos = await this.mouseController.getPosition();
-        this.clickAnchors.set(anchorKey, { x: pos.x, y: pos.y });
-      }
-      options.position = { ...this.clickAnchors.get(anchorKey) };
+      // No explicit position — click wherever the cursor currently is.
+      // Don't set options.position so MouseController won't moveTo anywhere;
+      // it will just apply jitter relative to the current cursor location.
     }
 
     await this.mouseController.click(options);
@@ -530,8 +523,6 @@ class WorkflowExecutor extends EventEmitter {
   resume() {
     if (this.state === EXECUTION_STATES.PAUSED) {
       this.isPaused = false;
-      // Clear click anchors so cursor position is re-captured after user may have moved it
-      this.clickAnchors.clear();
       this.setState(EXECUTION_STATES.RUNNING);
       this.emit('workflow:resumed');
     }

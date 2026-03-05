@@ -731,6 +731,37 @@ input[type="range"]::-webkit-slider-thumb:hover {
   background: var(--bg-secondary);
 }
 
+.loop-infinite-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: pointer;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  transition: all 0.15s ease;
+  user-select: none;
+  line-height: 1;
+}
+
+.loop-infinite-label:hover {
+  border-color: var(--color-primary-500);
+  color: var(--text-secondary);
+}
+
+.loop-infinite-label:has(input:checked) {
+  border-color: var(--color-primary-500);
+  background: rgba(6, 182, 212, 0.12);
+  color: var(--color-primary-400);
+}
+
+.loop-infinite-label input {
+  display: none;
+}
+
 .loop-settings {
   display: flex;
   align-items: center;
@@ -1551,12 +1582,40 @@ input[type="color"]::-webkit-color-swatch {
   flex-shrink: 0;
 }
 
-/* Inline Children (loop/conditional in main sequence) */
+/* Inline Children (loop/conditional/keyboard hold in main sequence)
+ *
+ * **Nested Container Pattern**: Any action that contains sub-actions renders its
+ * children inline in the workflow view.  This is recursive — loops inside loops,
+ * conditionals inside keyboard holds, etc. — all levels are rendered inline with
+ * depth-based indentation, accent borders, and full drag/drop at every level.
+ * This is the standard, expected interaction model for all container actions.
+ */
 .inline-children {
   width: 100%;
   padding: var(--space-2) 0 0 var(--space-6);
   border-top: 1px solid var(--border-color);
   margin-top: var(--space-2);
+}
+
+/* Reduce left padding at deeper nesting levels to avoid runaway indentation */
+.inline-children .inline-children {
+  padding-left: var(--space-4);
+  border-top: none;
+  margin-top: var(--space-1);
+}
+
+/* Depth-based accent borders for visual nesting cues */
+.inline-children[data-depth="0"] > .inline-branch > .inline-branch-list {
+  border-left: 2px solid rgba(251, 113, 133, 0.4);
+}
+.inline-children[data-depth="1"] > .inline-branch > .inline-branch-list {
+  border-left: 2px solid rgba(96, 165, 250, 0.4);
+}
+.inline-children[data-depth="2"] > .inline-branch > .inline-branch-list {
+  border-left: 2px solid rgba(167, 139, 250, 0.4);
+}
+.inline-children[data-depth="3"] > .inline-branch > .inline-branch-list {
+  border-left: 2px solid rgba(52, 211, 153, 0.4);
 }
 
 .inline-branch {

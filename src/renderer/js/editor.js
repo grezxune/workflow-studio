@@ -64,6 +64,7 @@ let actionList = null;
 let actionSequence = null;
 let workflowNameInput = null;
 let loopCountInput = null;
+let loopInfiniteInput = null;
 let loopDelayMinInput = null;
 let loopDelayMaxInput = null;
 let configPanel = null;
@@ -87,6 +88,7 @@ function initEditorView() {
   actionSequence = document.getElementById('action-sequence');
   workflowNameInput = document.getElementById('workflow-name');
   loopCountInput = document.getElementById('loop-count');
+  loopInfiniteInput = document.getElementById('loop-infinite');
   loopDelayMinInput = document.getElementById('loop-delay-min');
   loopDelayMaxInput = document.getElementById('loop-delay-max');
   configPanel = document.getElementById('config-panel');
@@ -334,7 +336,7 @@ function setAIGeneratingState(isGenerating, message) {
       : aiGenerateBtn.dataset.defaultHtml;
   }
   if (aiComposerMeta) {
-    aiComposerMeta.textContent = message || 'Uses OpenRouter';
+    aiComposerMeta.textContent = message || '';
   }
 }
 
@@ -351,36 +353,39 @@ async function handleAIGenerateWorkflow() {
     return;
   }
 
-  setAIGeneratingState(true, 'Contacting OpenRouter...');
+  setAIGeneratingState(true, 'Generating...');
+  let result;
   try {
-    const result = await window.workflowAPI.generateWorkflowWithAI({
+    result = await window.workflowAPI.generateWorkflowWithAI({
       prompt,
       gameId: aiGameSelect?.value || 'generic',
       preferredModel: aiModelSelect?.value || state.settings?.ai?.preferredModel || 'codex-5.3',
       applyMode: aiApplyModeSelect?.value || 'replace',
       currentWorkflow: state.currentWorkflow
     });
-
-    if (!result?.success) {
-      showToast('error', 'AI Error', result?.error || 'Failed to generate workflow draft.');
-      return;
-    }
-
-    if (result?.data?.action === 'clarify') {
-      const clarifyingText = result.data.clarification || 'Please provide more detail.';
-      showModal('AI Needs Clarification', `<p>${escapeHtml(clarifyingText)}</p>`, [
-        { label: 'Close', class: 'btn-secondary' }
-      ]);
-      return;
-    }
-
-    applyAIGeneratedWorkflow(result.data, result.meta);
   } catch (error) {
-    console.error('AI generation failed:', error);
-    showToast('error', 'AI Error', error.message || 'Failed to generate workflow draft.');
-  } finally {
-    setAIGeneratingState(false, 'Uses OpenRouter');
+    console.error('[AI] Generation IPC failed:', error);
+    showToast('error', 'AI Error', error.message || 'Failed to contact AI service.');
+    setAIGeneratingState(false);
+    return;
   }
+
+  setAIGeneratingState(false);
+
+  if (!result || !result.success) {
+    showToast('error', 'AI Error', result?.error || 'No response from AI service.');
+    return;
+  }
+
+  if (result.data?.action === 'clarify') {
+    const clarifyingText = result.data.clarification || 'Please provide more detail.';
+    showModal('AI Needs Clarification', `<p>${escapeHtml(clarifyingText)}</p>`, [
+      { label: 'Close', class: 'btn-secondary' }
+    ]);
+    return;
+  }
+
+  applyAIGeneratedWorkflow(result.data, result.meta);
 }
 
 function applyAIGeneratedWorkflow(payload, meta = {}) {
@@ -404,6 +409,11 @@ function applyAIGeneratedWorkflow(payload, meta = {}) {
   }
   if (workflowPatch.description) {
     state.currentWorkflow.description = workflowPatch.description;
+  }
+  if (typeof workflowPatch.infiniteLoop === 'boolean') {
+    state.currentWorkflow.infiniteLoop = workflowPatch.infiniteLoop;
+    loopInfiniteInput.checked = workflowPatch.infiniteLoop;
+    loopCountInput.disabled = workflowPatch.infiniteLoop;
   }
   if (workflowPatch.loopCount) {
     state.currentWorkflow.loopCount = workflowPatch.loopCount;
@@ -483,6 +493,16 @@ function setupEditorEvents() {
 
   workflowNameInput.addEventListener('blur', saveCurrentWorkflow);
 
+  // Infinite loop toggle for main workflow thread
+  loopInfiniteInput.addEventListener('change', () => {
+    if (state.currentWorkflow) {
+      state.currentWorkflow.infiniteLoop = loopInfiniteInput.checked;
+      loopCountInput.disabled = loopInfiniteInput.checked;
+      markDirty();
+      saveCurrentWorkflow();
+    }
+  });
+
   // Loop settings
   [loopCountInput, loopDelayMinInput, loopDelayMaxInput].forEach(input => {
     input.addEventListener('change', () => {
@@ -534,7 +554,9 @@ function loadWorkflowIntoEditor(workflow) {
 
   // Set form values
   workflowNameInput.value = workflow.name || 'Untitled Workflow';
+  loopInfiniteInput.checked = !!workflow.infiniteLoop;
   loopCountInput.value = workflow.loopCount || 1;
+  loopCountInput.disabled = !!workflow.infiniteLoop;
   loopDelayMinInput.value = workflow.loopDelay?.min || 500;
   loopDelayMaxInput.value = workflow.loopDelay?.max || 1000;
 
@@ -693,11 +715,27 @@ function getInlineBranches(action) {
 /**
  * Render inline children container for an action's branches.
  * Shared by loop, conditional, keyboard hold_and_act, and any future nested action types.
- * Supports drag/drop reorder within branch, drag from main sequence, move-out, edit, delete.
+ *
+ * **Nested Container Pattern**: Any action type that can contain sub-actions (loops,
+ * conditionals, keyboard hold_and_act, and any future container action types) renders
+ * its children inline in the workflow view. This is recursive — a loop inside a loop
+ * inside a conditional will render all levels inline with proper indentation and full
+ * drag/drop support at every depth. This is the standard, expected way to visualise
+ * and interact with nested actions throughout Workflow Studio.
+ *
+ * Supports: drag/drop reorder within branch, drag from main sequence, drag new actions
+ * from the palette, move-out to parent, edit, delete — all at arbitrary nesting depth.
+ *
+ * @param {Object}  action   - The parent action that owns the branches.
+ * @param {number}  index    - Index of the parent action in the top-level actions array.
+ * @param {Array}   branches - Array of { key, label, actions } branch descriptors.
+ * @param {number}  [depth=0] - Current nesting depth (drives indentation).
  */
-function renderInlineChildren(action, index, branches) {
+function renderInlineChildren(action, index, branches, depth) {
+  if (typeof depth !== 'number') depth = 0;
   const childrenContainer = document.createElement('div');
   childrenContainer.className = 'inline-children';
+  childrenContainer.dataset.depth = depth;
 
   branches.forEach(branch => {
     const branchEl = document.createElement('div');
@@ -739,7 +777,7 @@ function renderInlineChildren(action, index, branches) {
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
               </svg>
             </button>
-            <button class="btn btn-icon btn-sm inline-child-moveout" title="Move out to main sequence">
+            <button class="btn btn-icon btn-sm inline-child-moveout" title="Move out to parent">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px">
                 <polyline points="9 18 15 12 9 6"/>
               </svg>
@@ -798,6 +836,7 @@ function renderInlineChildren(action, index, branches) {
 
           try {
             const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+            // Reorder within same branch
             if (data.type === 'inline-child' && data.branchKey === branch.key && data.parentIndex === index) {
               const arr = action[branch.key];
               const [moved] = arr.splice(data.childIndex, 1);
@@ -808,6 +847,7 @@ function renderInlineChildren(action, index, branches) {
               saveCurrentWorkflow();
               return;
             }
+            // Move from main sequence into this branch at position ci
             if (data.type === 'main-action' && data.index !== index) {
               const mainActions = state.currentWorkflow.actions;
               const [movedAction] = mainActions.splice(data.index, 1);
@@ -818,8 +858,20 @@ function renderInlineChildren(action, index, branches) {
               markDirty();
               renderActionSequence();
               saveCurrentWorkflow();
+              return;
             }
           } catch (err) {}
+
+          // New action from palette
+          if (editorState.draggedAction?.isNew) {
+            const newAction = createDefaultAction(editorState.draggedAction.type);
+            action[branch.key] = action[branch.key] || [];
+            action[branch.key].splice(ci, 0, newAction);
+            updateAction(index, action);
+            markDirty();
+            renderActionSequence();
+            saveCurrentWorkflow();
+          }
         });
 
         // Edit button
@@ -852,6 +904,13 @@ function renderInlineChildren(action, index, branches) {
         });
 
         listEl.appendChild(childEl);
+
+        // Recursive: if this child action itself has branches, render them nested
+        const childBranches = getInlineBranches(childAction);
+        if (childBranches.length > 0) {
+          const nestedContainer = renderInlineChildren(childAction, index, childBranches, depth + 1);
+          listEl.appendChild(nestedContainer);
+        }
       });
 
       // Reset drag flag on mouseup
@@ -861,7 +920,7 @@ function renderInlineChildren(action, index, branches) {
     branchEl.appendChild(listEl);
     childrenContainer.appendChild(branchEl);
 
-    // Drag/drop onto inline branch list (from main sequence)
+    // Drag/drop onto inline branch list (from main sequence or palette)
     listEl.addEventListener('dragover', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -891,8 +950,20 @@ function renderInlineChildren(action, index, branches) {
           markDirty();
           renderActionSequence();
           saveCurrentWorkflow();
+          return;
         }
       } catch (err) {}
+
+      // New action from palette dropped onto the branch list
+      if (editorState.draggedAction?.isNew) {
+        const newAction = createDefaultAction(editorState.draggedAction.type);
+        action[branch.key] = action[branch.key] || [];
+        action[branch.key].push(newAction);
+        updateAction(index, action);
+        markDirty();
+        renderActionSequence();
+        saveCurrentWorkflow();
+      }
     });
   });
 

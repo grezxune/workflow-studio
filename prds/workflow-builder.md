@@ -83,6 +83,7 @@ interface Workflow {
   createdAt: string;
   updatedAt: string;
   triggerImage?: string; // Image ID to start workflow
+  infiniteLoop?: boolean; // When true, the main workflow loops forever until stopped
   loopCount: number | 'infinite';
   loopDelay: { min: number; max: number }; // ms between loops
   actions: Action[];
@@ -92,6 +93,22 @@ interface Workflow {
 ### F2: Action Types
 
 All actions support an optional `trigger` field that specifies a detection condition that must be met before the action executes. See F3 for detection types.
+
+> **Nested Container Pattern (Architectural Decision)**
+>
+> Any action type that can contain sub-actions (loops, conditionals, keyboard
+> `hold_and_act`, and any future container action types) renders its children
+> **inline** in the workflow editor view. This is **recursive** — a loop inside
+> a loop inside a conditional renders all levels inline with depth-based
+> indentation, colour-coded nesting borders, and full drag/drop at every depth.
+>
+> Users can drag actions from the palette, from the main sequence, or reorder
+> within any nested branch — all directly in the workflow view without opening
+> a separate modal. The "Edit" button on a nested action opens its config
+> panel, and any sub-actions it owns are again shown inline.
+>
+> This is the **standard, expected interaction model** for all container actions
+> in Workflow Studio and must be maintained by all future changes.
 
 #### F2.1: Mouse Move
 - Target: Absolute coordinates (x, y) OR relative to detected element

@@ -302,7 +302,7 @@
                   </svg>
                   Generate Workflow Draft
                 </button>
-                <span class="ai-composer-meta" id="ai-composer-meta">Uses OpenRouter</span>
+                <span class="ai-composer-meta" id="ai-composer-meta"></span>
               </div>
             </div>
 
@@ -317,6 +317,10 @@
 
             <div class="editor-footer">
               <div class="loop-settings">
+                <label class="checkbox-label loop-infinite-label" title="Run the main workflow forever until stopped">
+                  <input type="checkbox" id="loop-infinite">
+                  <span>∞</span>
+                </label>
                 <label>Loop:</label>
                 <input type="number" id="loop-count" min="1" max="9999" value="1">
                 <label>times with</label>
@@ -481,9 +485,9 @@
             <div class="settings-section">
               <h2>AI Assistant</h2>
               <div class="setting-item">
-                <label for="ai-openrouter-key">OpenRouter API Key</label>
+                <label for="ai-openrouter-key">API Key</label>
                 <input type="password" id="ai-openrouter-key" placeholder="sk-or-v1-...">
-                <p class="setting-hint">Required for AI workflow generation. Stored locally in encrypted app config.</p>
+                <p class="setting-hint">Required for AI workflow generation. Get a key at <a href="https://openrouter.ai" target="_blank">openrouter.ai</a>. Stored locally.</p>
               </div>
               <div class="setting-item">
                 <label for="ai-preferred-model">Preferred Model</label>
@@ -491,7 +495,7 @@
                   <option value="codex-5.3">Codex 5.3 (fallback to Codex 5.2)</option>
                   <option value="opus-4.6">Opus 4.6</option>
                 </select>
-                <p class="setting-hint">If Codex 5.3 is not available on OpenRouter, Workflow Studio automatically uses Codex 5.2.</p>
+                <p class="setting-hint">If Codex 5.3 is unavailable, Workflow Studio automatically falls back to Codex 5.2.</p>
               </div>
             </div>
 

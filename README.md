@@ -39,7 +39,7 @@ Every workflow is a list of actions that run in order. You can mix and match:
 | **Find Image** | Searches the screen for a specific image |
 | **Find Pixel** | Looks for a specific color at a location |
 
-Drag and drop to reorder. Nest actions inside loops and conditionals. Everything auto-saves as you work.
+Drag and drop to reorder. Nest actions inside loops, conditionals, and keyboard hold-actions at **any depth** — loops inside loops, conditionals inside holds, etc. Every nested level is visible and editable right in the workflow view with full drag/drop support. You can also toggle the main workflow as an **infinite loop** (∞) so it runs forever until you stop it. Everything auto-saves as you work.
 
 ## Global Hotkeys
 
