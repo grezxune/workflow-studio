@@ -9,6 +9,10 @@ export function getPreloadPath(): string {
   return path.join(__dirname, '../../preload/index.mjs');
 }
 
+export function getOverlayPreloadPath(): string {
+  return path.join(__dirname, '../../preload/overlay.mjs');
+}
+
 export function getRendererHtmlPath(fileName: string): string {
   return path.join(__dirname, '../../renderer', fileName);
 }

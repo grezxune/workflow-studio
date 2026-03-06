@@ -9,15 +9,30 @@ function showToast(type, title, message, duration = 4000) {
     info: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>'
   };
 
-  toast.innerHTML = `
-    <svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      ${icons[type] || icons.info}
-    </svg>
-    <div class="toast-content">
-      <div class="toast-title">${title}</div>
-      ${message ? `<div class="toast-message">${message}</div>` : ''}
-    </div>
-  `;
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  icon.setAttribute('class', 'toast-icon');
+  icon.setAttribute('viewBox', '0 0 24 24');
+  icon.setAttribute('fill', 'none');
+  icon.setAttribute('stroke', 'currentColor');
+  icon.setAttribute('stroke-width', '2');
+  icon.innerHTML = icons[type] || icons.info;
+
+  const content = document.createElement('div');
+  content.className = 'toast-content';
+
+  const titleEl = document.createElement('div');
+  titleEl.className = 'toast-title';
+  titleEl.textContent = String(title ?? '');
+  content.appendChild(titleEl);
+
+  if (message) {
+    const messageEl = document.createElement('div');
+    messageEl.className = 'toast-message';
+    messageEl.textContent = String(message);
+    content.appendChild(messageEl);
+  }
+
+  toast.append(icon, content);
 
   elements.toastContainer.appendChild(toast);
 
@@ -84,7 +99,8 @@ function closeModal() {
  * Show confirmation dialog
  */
 function showConfirm(title, message, onConfirm) {
-  showModal(title, `<p>${message}</p>`, [
+  const escaped = escapeHtml(String(message ?? ''));
+  showModal(title, `<p>${escaped}</p>`, [
     { label: 'Cancel', class: 'btn-secondary' },
     { label: 'Confirm', class: 'btn-danger', onClick: onConfirm }
   ]);

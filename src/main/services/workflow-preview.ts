@@ -7,7 +7,7 @@
  */
 
 import { BrowserWindow, screen, ipcMain } from 'electron';
-import { loadRendererPage } from '../lib/renderer-path';
+import { getOverlayPreloadPath, loadRendererPage } from '../lib/renderer-path';
 
 let previewWindow = null;
 let mainWindow = null;
@@ -134,8 +134,10 @@ export function showPreviewOverlay(workflow, mainWin) {
     enableLargerThanScreen: true,
     focusable: true,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
+      preload: getOverlayPreloadPath(),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true
     }
   });
 

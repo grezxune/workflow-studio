@@ -102,7 +102,10 @@
   </div>
 
   <script>
-    const { ipcRenderer } = require('electron');
+    const api = window.overlayAPI?.regionSelect;
+    if (!api) {
+      throw new Error('overlayAPI.regionSelect is unavailable');
+    }
 
     const selection = document.getElementById('selection');
     const sizeLabel = document.getElementById('selection-size');
@@ -161,7 +164,7 @@
       }
 
       // Send region to main process
-      ipcRenderer.send('region-selected', {
+      api.sendRegionSelected({
         x: Math.round(left),
         y: Math.round(top),
         width: Math.round(width),
@@ -171,7 +174,7 @@
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        ipcRenderer.send('region-cancelled');
+        api.sendCancelled();
       }
     });
   </script>

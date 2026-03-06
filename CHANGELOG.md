@@ -28,6 +28,16 @@ All notable changes to this project are documented in this file.
 - Added Vite/Electron build config (`electron.vite.config.ts`) and TypeScript project config (`tsconfig.json`).
 - Updated package scripts and Electron Builder file inclusion to build from `out/**`.
 - Removed obsolete JavaScript entrypoints (`src/main.js`, `src/preload.js`, `src/renderer.js`, and `src/renderer/js/**`).
+- Added dedicated secure overlay preload bridge (`src/preload/overlay.ts`) and switched all auxiliary windows to `nodeIntegration: false`, `contextIsolation: true`, and `sandbox: true`.
+- Removed direct `require('electron')` usage from overlay HTML pages and migrated to preload-exposed `window.overlayAPI`.
+- Hardened `workflow-preview` label rendering to avoid unsafe `innerHTML` interpolation for workflow-controlled text.
+- Added IPC sender binding and payload validation helpers in `src/main/ipc/index.ts`, then applied validation across workflow/execution/settings/detection/template/hotkey routes.
+- Added update IPC sender validation in `src/main/services/auto-updater.ts`.
+- Added safe filesystem path guards (`src/main/lib/safe-path.ts`) and enforced them in `StorageService` for workflows/templates/images.
+- Updated runtime bundle generation to transpile TypeScript chunks to JavaScript and fail fast on invalid generated output.
+- Hardened renderer toast rendering to use DOM text assignment instead of HTML interpolation for dynamic strings.
+- Added quality gates: `lint`, `test`, `test:unit`, `test:integration`, and `typecheck:strict` scripts plus new unit/integration tests under `tests/`.
+- Added PRD `prds/electron-security-hardening.md` to document security hardening scope, threat model, and rollout plan.
 
 ## 2026-02-23
 - Expanded `/prds/workflow-builder.md` with game-aware AI workflow generation requirements.

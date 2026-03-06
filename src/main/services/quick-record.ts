@@ -6,7 +6,7 @@
  */
 
 import { BrowserWindow, screen, ipcMain } from 'electron';
-import { loadRendererPage } from '../lib/renderer-path';
+import { getOverlayPreloadPath, loadRendererPage } from '../lib/renderer-path';
 
 let quickRecordWindow = null;
 let resolvePromise = null;
@@ -102,8 +102,10 @@ function createQuickRecordWindow() {
     hasShadow: false,
     enableLargerThanScreen: true,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
+      preload: getOverlayPreloadPath(),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true
     }
   });
   

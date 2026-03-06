@@ -7,9 +7,18 @@
 
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
-import { ipcMain } from 'electron';
+import { ipcMain, type IpcMainInvokeEvent } from 'electron';
 
 let mainWindow: any = null;
+
+function assertMainWindowSender(event: IpcMainInvokeEvent, channel: string): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    throw new Error(`Update channel unavailable: ${channel}`);
+  }
+  if (event.sender !== mainWindow.webContents) {
+    throw new Error(`Unauthorized sender for ${channel}`);
+  }
+}
 
 /**
  * Initialize the auto-updater
@@ -71,13 +80,15 @@ export function initAutoUpdater(win: any) {
   });
 
   // IPC: renderer can request restart
-  ipcMain.handle('update:restart', () => {
+  ipcMain.handle('update:restart', (event) => {
+    assertMainWindowSender(event, 'update:restart');
     console.log('[AutoUpdater] User requested restart to apply update');
     autoUpdater.quitAndInstall(false, true);
   });
 
   // IPC: renderer can manually check for updates
-  ipcMain.handle('update:check', async () => {
+  ipcMain.handle('update:check', async (event) => {
+    assertMainWindowSender(event, 'update:check');
     try {
       const result = await autoUpdater.checkForUpdates();
       return { success: true, version: result?.updateInfo?.version };

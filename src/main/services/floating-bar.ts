@@ -6,7 +6,7 @@
  */
 
 import { BrowserWindow, ipcMain, screen } from 'electron';
-import { loadRendererPage } from '../lib/renderer-path';
+import { getOverlayPreloadPath, loadRendererPage } from '../lib/renderer-path';
 
 let floatingWindow = null;
 let mainWindow = null;
@@ -46,8 +46,10 @@ export function showFloatingBar(mainWin) {
     hasShadow: false,
     focusable: false,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
+      preload: getOverlayPreloadPath(),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true
     }
   });
 

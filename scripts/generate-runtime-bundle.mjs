@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -70,11 +71,25 @@ for (const chunk of chunkOrder) {
     throw new Error(`Missing runtime chunk: ${chunkPath}`);
   }
   const source = fs.readFileSync(chunkPath, 'utf8').trimEnd();
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2020,
+      module: ts.ModuleKind.ESNext,
+      removeComments: false
+    },
+    fileName: chunkPath
+  }).outputText.trimEnd();
   contents.push(`// ===== ${chunk} =====`);
-  contents.push(source);
+  contents.push(transpiled);
   contents.push('');
 }
 
 fs.mkdirSync(outputDir, { recursive: true });
-fs.writeFileSync(outputFile, contents.join('\n'), 'utf8');
+const bundleOutput = contents.join('\n');
+try {
+  new Function(bundleOutput);
+} catch (error) {
+  throw new Error(`[gen:runtime] Generated runtime bundle is invalid JavaScript: ${error.message}`);
+}
+fs.writeFileSync(outputFile, bundleOutput, 'utf8');
 console.log(`[gen:runtime] Wrote ${path.relative(projectRoot, outputFile)}`);

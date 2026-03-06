@@ -195,7 +195,10 @@
   </div>
 
   <script>
-    const { ipcRenderer } = require('electron');
+    const api = window.overlayAPI?.capturePreview;
+    if (!api) {
+      throw new Error('overlayAPI.capturePreview is unavailable');
+    }
 
     const previewImage = document.getElementById('preview-image');
     const imageInfo = document.getElementById('image-info');
@@ -204,7 +207,7 @@
     let defaultName = '';
 
     // Receive the captured image path from main process
-    ipcRenderer.on('preview-image-data', (event, data) => {
+    api.onImageData((data) => {
       previewImage.src = `file://${data.imagePath}`;
       imageInfo.textContent = `${data.region.width} × ${data.region.height} px`;
       defaultName = data.defaultName || `template-${Date.now()}`;
@@ -219,25 +222,25 @@
     }
 
     document.getElementById('btn-confirm').addEventListener('click', () => {
-      ipcRenderer.send('capture-preview-confirm', { name: getImageName() });
+      api.sendConfirm({ name: getImageName() });
     });
 
     document.getElementById('btn-redo').addEventListener('click', () => {
-      ipcRenderer.send('capture-preview-redo');
+      api.sendRedo();
     });
 
     document.getElementById('btn-cancel').addEventListener('click', () => {
-      ipcRenderer.send('capture-preview-cancel');
+      api.sendCancel();
     });
 
     document.addEventListener('keydown', (e) => {
       const inInput = document.activeElement === nameInput;
       if (e.key === 'Enter') {
-        ipcRenderer.send('capture-preview-confirm', { name: getImageName() });
+        api.sendConfirm({ name: getImageName() });
       } else if (e.key === 'Escape') {
-        ipcRenderer.send('capture-preview-cancel');
+        api.sendCancel();
       } else if ((e.key === 'r' || e.key === 'R') && !inInput) {
-        ipcRenderer.send('capture-preview-redo');
+        api.sendRedo();
       }
     });
   </script>

@@ -1,6 +1,15 @@
+interface WorkflowAPI {
+  [method: string]: ((...args: unknown[]) => unknown) | undefined;
+}
+
+interface OverlayAPI {
+  [scope: string]: Record<string, ((...args: unknown[]) => unknown) | undefined> | undefined;
+}
+
 declare global {
   interface Window {
-    workflowAPI: Record<string, any>;
+    workflowAPI: WorkflowAPI;
+    overlayAPI?: OverlayAPI;
     platform: {
       isMac: boolean;
       isWindows: boolean;

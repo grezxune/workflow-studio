@@ -5,7 +5,7 @@
  */
 
 import fs from 'fs';
-import { ipcMain, dialog } from 'electron';
+import { ipcMain, dialog, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import { IPC_CHANNELS } from '../../shared/constants';
 import { getStorageService } from '../services/storage';
 import { getWorkflowExecutor } from '../services/workflow-executor';
@@ -20,9 +20,78 @@ import { initHotkeyService, getHotkeys, setHotkey, removeHotkey } from '../servi
 import { generateWorkflowDraftWithAI } from '../services/ai/ai-workflow-generator';
 import { listSupportedGames } from '../services/ai/game-context-packs';
 
-let mainWindow = null;
+let mainWindow: BrowserWindow | null = null;
+const registeredHandleChannels = new Set<string>();
 
-export function initializeIPC(window) {
+function assertMainWindowSender(event: IpcMainInvokeEvent, channel: string): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    throw new Error(`IPC handler unavailable for channel "${channel}"`);
+  }
+  if (event.sender !== mainWindow.webContents) {
+    throw new Error(`Unauthorized IPC sender for channel "${channel}"`);
+  }
+}
+
+function secureHandle(
+  channel: string,
+  handler: (event: IpcMainInvokeEvent, ...args: any[]) => Promise<unknown> | unknown
+): void {
+  registeredHandleChannels.add(channel);
+  ipcMain.removeHandler(channel);
+  ipcMain.handle(channel, async (event, ...args) => {
+    assertMainWindowSender(event, channel);
+    return handler(event, ...args);
+  });
+}
+
+function assertObject(value: unknown, name: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`Invalid ${name}: expected object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function assertOptionalObject(value: unknown, name: string): Record<string, unknown> {
+  if (value == null) {
+    return {};
+  }
+  return assertObject(value, name);
+}
+
+function assertString(value: unknown, name: string, maxLength = 200): string {
+  if (typeof value !== 'string') {
+    throw new Error(`Invalid ${name}: expected string`);
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > maxLength) {
+    throw new Error(`Invalid ${name}: must be between 1 and ${maxLength} characters`);
+  }
+  return trimmed;
+}
+
+function assertNumber(value: unknown, name: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`Invalid ${name}: expected finite number`);
+  }
+  return value;
+}
+
+function assertBoolean(value: unknown, name: string): boolean {
+  if (typeof value !== 'boolean') {
+    throw new Error(`Invalid ${name}: expected boolean`);
+  }
+  return value;
+}
+
+function assertWorkflowLike(value: unknown): Record<string, unknown> {
+  const workflow = assertObject(value, 'workflow');
+  if (!Array.isArray(workflow.actions)) {
+    throw new Error('Invalid workflow: missing actions array');
+  }
+  return workflow;
+}
+
+export function initializeIPC(window: BrowserWindow) {
   mainWindow = window;
 
   const storage = getStorageService();
@@ -156,7 +225,7 @@ function setupExecutorEvents(executor) {
 }
 
 function registerWorkflowHandlers(storage) {
-  ipcMain.handle(IPC_CHANNELS.GET_WORKFLOWS, async () => {
+  secureHandle(IPC_CHANNELS.GET_WORKFLOWS, async () => {
     try {
       console.log('[IPC] GET_WORKFLOWS called');
       const workflows = storage.getAllWorkflows();
@@ -168,33 +237,37 @@ function registerWorkflowHandlers(storage) {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.GET_WORKFLOW, async (event, id) => {
-    return storage.getWorkflow(id);
+  secureHandle(IPC_CHANNELS.GET_WORKFLOW, async (event, id) => {
+    return storage.getWorkflow(assertString(id, 'workflow id'));
   });
 
-  ipcMain.handle(IPC_CHANNELS.CREATE_WORKFLOW, async (event, data) => {
-    return storage.createWorkflow(data);
+  secureHandle(IPC_CHANNELS.CREATE_WORKFLOW, async (event, data) => {
+    return storage.createWorkflow(assertOptionalObject(data, 'workflow data'));
   });
 
-  ipcMain.handle(IPC_CHANNELS.UPDATE_WORKFLOW, async (event, { id, updates }) => {
+  secureHandle(IPC_CHANNELS.UPDATE_WORKFLOW, async (event, payload) => {
+    const data = assertObject(payload, 'workflow update payload');
+    const id = assertString(data.id, 'workflow id');
+    const updates = assertObject(data.updates, 'workflow updates');
     return storage.updateWorkflow(id, updates);
   });
 
-  ipcMain.handle(IPC_CHANNELS.DELETE_WORKFLOW, async (event, id) => {
-    return storage.deleteWorkflow(id);
+  secureHandle(IPC_CHANNELS.DELETE_WORKFLOW, async (event, id) => {
+    return storage.deleteWorkflow(assertString(id, 'workflow id'));
   });
 
-  ipcMain.handle(IPC_CHANNELS.DUPLICATE_WORKFLOW, async (event, id) => {
-    return storage.duplicateWorkflow(id);
+  secureHandle(IPC_CHANNELS.DUPLICATE_WORKFLOW, async (event, id) => {
+    return storage.duplicateWorkflow(assertString(id, 'workflow id'));
   });
 
-  ipcMain.handle(IPC_CHANNELS.EXPORT_WORKFLOW, async (event, id) => {
-    const json = storage.exportWorkflow(id);
+  secureHandle(IPC_CHANNELS.EXPORT_WORKFLOW, async (event, id) => {
+    const workflowId = assertString(id, 'workflow id');
+    const json = storage.exportWorkflow(workflowId);
     if (!json) return null;
 
-    const { filePath } = await dialog.showSaveDialog(mainWindow, {
+    const { filePath } = await dialog.showSaveDialog(mainWindow!, {
       title: 'Export Workflow',
-      defaultPath: `workflow-${id}.json`,
+      defaultPath: `workflow-${workflowId}.json`,
       filters: [{ name: 'JSON', extensions: ['json'] }]
     });
 
@@ -205,8 +278,8 @@ function registerWorkflowHandlers(storage) {
     return null;
   });
 
-  ipcMain.handle(IPC_CHANNELS.IMPORT_WORKFLOW, async () => {
-    const { filePaths } = await dialog.showOpenDialog(mainWindow, {
+  secureHandle(IPC_CHANNELS.IMPORT_WORKFLOW, async () => {
+    const { filePaths } = await dialog.showOpenDialog(mainWindow!, {
       title: 'Import Workflow',
       filters: [{ name: 'JSON', extensions: ['json'] }],
       properties: ['openFile']
@@ -219,186 +292,232 @@ function registerWorkflowHandlers(storage) {
     return null;
   });
 
-  ipcMain.handle(IPC_CHANNELS.GET_RECENT_WORKFLOWS, async () => {
+  secureHandle(IPC_CHANNELS.GET_RECENT_WORKFLOWS, async () => {
     return storage.getRecentWorkflows();
   });
 }
 
 function registerExecutionHandlers(executor) {
-  ipcMain.handle(IPC_CHANNELS.EXECUTE_WORKFLOW, async (event, { workflow, options }) => {
+  secureHandle(IPC_CHANNELS.EXECUTE_WORKFLOW, async (event, payload) => {
+    const data = assertObject(payload, 'execution payload');
+    const workflow = assertWorkflowLike(data.workflow);
+    const options = assertOptionalObject(data.options, 'execution options');
     console.log('[IPC] EXECUTE_WORKFLOW received');
     console.log('[IPC] Options:', JSON.stringify(options));
     try {
       await executor.execute(workflow, options);
       return { success: true };
     } catch (error) {
-      console.error('[IPC] Execute error:', error.message);
-      return { success: false, error: error.message };
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[IPC] Execute error:', message);
+      return { success: false, error: message };
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.PAUSE_EXECUTION, async () => {
+  secureHandle(IPC_CHANNELS.PAUSE_EXECUTION, async () => {
     executor.pause();
     return { success: true };
   });
 
-  ipcMain.handle(IPC_CHANNELS.RESUME_EXECUTION, async () => {
+  secureHandle(IPC_CHANNELS.RESUME_EXECUTION, async () => {
     executor.resume();
     return { success: true };
   });
 
-  ipcMain.handle(IPC_CHANNELS.STOP_EXECUTION, async () => {
+  secureHandle(IPC_CHANNELS.STOP_EXECUTION, async () => {
     executor.stop();
     return { success: true };
   });
 
-  ipcMain.handle(IPC_CHANNELS.EMERGENCY_STOP, async () => {
+  secureHandle(IPC_CHANNELS.EMERGENCY_STOP, async () => {
     await executor.emergencyStop();
     return { success: true };
   });
 
-  ipcMain.handle(IPC_CHANNELS.GET_EXECUTION_STATUS, async () => {
+  secureHandle(IPC_CHANNELS.GET_EXECUTION_STATUS, async () => {
     return executor.getStatus();
   });
 }
 
 function registerSettingsHandlers(storage) {
-  ipcMain.handle(IPC_CHANNELS.GET_SETTINGS, async () => {
+  secureHandle(IPC_CHANNELS.GET_SETTINGS, async () => {
     return storage.getSettings();
   });
 
-  ipcMain.handle(IPC_CHANNELS.UPDATE_SETTINGS, async (event, updates) => {
-    const result = storage.updateSettings(updates);
+  secureHandle(IPC_CHANNELS.UPDATE_SETTINGS, async (event, updates) => {
+    const safeUpdates = assertObject(updates, 'settings updates');
+    const result = storage.updateSettings(safeUpdates);
     
     // Propagate to live service instances
     try {
       const mouse = getMouseController();
-      if (mouse) mouse.updateSettings(updates);
+      if (mouse) mouse.updateSettings(safeUpdates);
     } catch (e) {}
     try {
       const detection = getDetectionService();
-      if (detection) detection.updateSettings(updates);
+      if (detection) detection.updateSettings(safeUpdates);
     } catch (e) {}
     
     return result;
   });
 
-  ipcMain.handle(IPC_CHANNELS.GET_SETTING, async (event, key) => {
-    return storage.getSetting(key);
+  secureHandle(IPC_CHANNELS.GET_SETTING, async (event, key) => {
+    return storage.getSetting(assertString(key, 'setting key', 100));
   });
 
-  ipcMain.handle(IPC_CHANNELS.SET_SETTING, async (event, { key, value }) => {
+  secureHandle(IPC_CHANNELS.SET_SETTING, async (event, payload) => {
+    const data = assertObject(payload, 'setting payload');
+    const key = assertString(data.key, 'setting key', 100);
+    const value = data.value;
     storage.setSetting(key, value);
     return { success: true };
   });
 
-  ipcMain.handle(IPC_CHANNELS.SELECT_DIRECTORY, async (event, options = {}) => {
-    const { filePaths } = await dialog.showOpenDialog(mainWindow, {
-      title: options.title || 'Select Directory',
+  secureHandle(IPC_CHANNELS.SELECT_DIRECTORY, async (event, options = {}) => {
+    const safeOptions = assertOptionalObject(options, 'directory selection options');
+    const title = typeof safeOptions.title === 'string' ? safeOptions.title : 'Select Directory';
+    const defaultPath = typeof safeOptions.defaultPath === 'string' ? safeOptions.defaultPath : undefined;
+    const { filePaths } = await dialog.showOpenDialog(mainWindow!, {
+      title,
       properties: ['openDirectory', 'createDirectory'],
-      defaultPath: options.defaultPath
+      defaultPath
     });
 
     return filePaths && filePaths.length > 0 ? filePaths[0] : null;
   });
 
-  ipcMain.handle(IPC_CHANNELS.GET_WORKFLOWS_DIR, async () => {
+  secureHandle(IPC_CHANNELS.GET_WORKFLOWS_DIR, async () => {
     return storage.getWorkflowsDir();
   });
 }
 
 function registerDetectionHandlers(detection) {
-  ipcMain.handle(IPC_CHANNELS.CAPTURE_SCREEN, async (event, options = {}) => {
-    return await detection.captureScreen(options.region);
+  secureHandle(IPC_CHANNELS.CAPTURE_SCREEN, async (event, options = {}) => {
+    const safeOptions = assertOptionalObject(options, 'capture options');
+    return await detection.captureScreen(safeOptions.region);
   });
 
-  ipcMain.handle(IPC_CHANNELS.CAPTURE_REGION, async (event, { region, name }) => {
+  secureHandle(IPC_CHANNELS.CAPTURE_REGION, async (event, payload) => {
+    const data = assertObject(payload, 'capture region payload');
+    const region = assertObject(data.region, 'capture region');
+    const name = assertString(data.name, 'template name', 120);
     return await detection.captureTemplate(region, name);
   });
 
-  ipcMain.handle(IPC_CHANNELS.FIND_IMAGE, async (event, { imageId, options }) => {
+  secureHandle(IPC_CHANNELS.FIND_IMAGE, async (event, payload) => {
+    const data = assertObject(payload, 'find image payload');
+    const imageId = assertString(data.imageId, 'image id', 200);
+    const options = assertOptionalObject(data.options, 'find image options');
     return await detection.findImage(imageId, options);
   });
 
-  ipcMain.handle(IPC_CHANNELS.FIND_PIXEL, async (event, { color, options }) => {
+  secureHandle(IPC_CHANNELS.FIND_PIXEL, async (event, payload) => {
+    const data = assertObject(payload, 'find pixel payload');
+    const color = assertObject(data.color, 'pixel color');
+    const options = assertOptionalObject(data.options, 'find pixel options');
     return await detection.findPixel(color, options);
   });
 
-  ipcMain.handle(IPC_CHANNELS.GET_PIXEL_COLOR, async (event, { x, y }) => {
+  secureHandle(IPC_CHANNELS.GET_PIXEL_COLOR, async (event, payload) => {
+    const data = assertObject(payload, 'pixel position');
+    const x = assertNumber(data.x, 'pixel x');
+    const y = assertNumber(data.y, 'pixel y');
     return await detection.getPixelColor(x, y);
   });
 
-  ipcMain.handle(IPC_CHANNELS.GET_SCREEN_SIZE, async () => {
+  secureHandle(IPC_CHANNELS.GET_SCREEN_SIZE, async () => {
     return await detection.getScreenSize();
   });
 
   const storage = getStorageService();
 
-  ipcMain.handle(IPC_CHANNELS.GET_IMAGES, async () => {
+  secureHandle(IPC_CHANNELS.GET_IMAGES, async () => {
     return storage.getAllImages();
   });
 
-  ipcMain.handle(IPC_CHANNELS.DELETE_IMAGE, async (event, id) => {
-    return storage.deleteImage(id);
+  secureHandle(IPC_CHANNELS.DELETE_IMAGE, async (event, id) => {
+    return storage.deleteImage(assertString(id, 'image id', 200));
   });
 
-  ipcMain.handle('images:rename', async (event, { oldId, newId }) => {
+  secureHandle('images:rename', async (event, payload) => {
+    const data = assertObject(payload, 'image rename payload');
+    const oldId = assertString(data.oldId, 'old image id', 200);
+    const newId = assertString(data.newId, 'new image id', 200);
     return storage.renameImage(oldId, newId);
   });
 
-  ipcMain.handle(IPC_CHANNELS.SAVE_IMAGE, async (event, { id, buffer }) => {
-    return storage.saveImage(id, Buffer.from(buffer));
+  secureHandle(IPC_CHANNELS.SAVE_IMAGE, async (event, payload) => {
+    const data = assertObject(payload, 'save image payload');
+    const id = assertString(data.id, 'image id', 200);
+    if (!(data.buffer instanceof ArrayBuffer) && !ArrayBuffer.isView(data.buffer)) {
+      throw new Error('Invalid image buffer');
+    }
+    const inputBuffer = data.buffer as ArrayBuffer | ArrayBufferView;
+    const nodeBuffer = inputBuffer instanceof ArrayBuffer
+      ? Buffer.from(new Uint8Array(inputBuffer))
+      : Buffer.from(inputBuffer.buffer, inputBuffer.byteOffset, inputBuffer.byteLength);
+    return storage.saveImage(id, nodeBuffer);
   });
 
   // Image folder operations (virtual/metadata-only)
-  ipcMain.handle('images:get-folders', async () => {
+  secureHandle('images:get-folders', async () => {
     return storage.getImageFolders();
   });
 
-  ipcMain.handle('images:create-folder', async (event, name) => {
-    return storage.createImageFolder(name);
+  secureHandle('images:create-folder', async (event, name) => {
+    return storage.createImageFolder(assertString(name, 'folder name', 80));
   });
 
-  ipcMain.handle('images:rename-folder', async (event, { oldName, newName }) => {
+  secureHandle('images:rename-folder', async (event, payload) => {
+    const data = assertObject(payload, 'folder rename payload');
+    const oldName = assertString(data.oldName, 'old folder name', 80);
+    const newName = assertString(data.newName, 'new folder name', 80);
     return storage.renameImageFolder(oldName, newName);
   });
 
-  ipcMain.handle('images:delete-folder', async (event, name) => {
-    return storage.deleteImageFolder(name);
+  secureHandle('images:delete-folder', async (event, name) => {
+    return storage.deleteImageFolder(assertString(name, 'folder name', 80));
   });
 
-  ipcMain.handle('images:move-to-folder', async (event, { imageId, folder }) => {
+  secureHandle('images:move-to-folder', async (event, payload) => {
+    const data = assertObject(payload, 'move image payload');
+    const imageId = assertString(data.imageId, 'image id', 200);
+    const folder = data.folder == null ? null : assertString(data.folder, 'folder name', 80);
     storage.moveImageToFolder(imageId, folder);
     return { success: true };
   });
 
-  ipcMain.handle('detection:clear-template-cache', async (event, imageId) => {
+  secureHandle('detection:clear-template-cache', async (event, imageId) => {
     try {
       const detection = getDetectionService();
-      detection.clearTemplateCache(imageId);
+      if (imageId == null) {
+        detection.clearTemplateCache();
+      } else {
+        detection.clearTemplateCache(assertString(imageId, 'image id', 200));
+      }
       return { success: true };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: e instanceof Error ? e.message : String(e) };
     }
   });
 }
 
 function registerSafetyHandlers(safety) {
-  ipcMain.handle(IPC_CHANNELS.SET_PANIC_HOTKEY, async (event, hotkey) => {
-    safety.setPanicHotkey(hotkey);
+  secureHandle(IPC_CHANNELS.SET_PANIC_HOTKEY, async (event, hotkey) => {
+    safety.setPanicHotkey(assertString(hotkey, 'panic hotkey', 40));
     return { success: true };
   });
 
-  ipcMain.handle(IPC_CHANNELS.SET_PAUSE_HOTKEY, async (event, hotkey) => {
-    safety.setPauseHotkey(hotkey);
+  secureHandle(IPC_CHANNELS.SET_PAUSE_HOTKEY, async (event, hotkey) => {
+    safety.setPauseHotkey(assertString(hotkey, 'pause hotkey', 40));
     return { success: true };
   });
 
-  ipcMain.handle(IPC_CHANNELS.GET_SAFETY_CONFIG, async () => {
+  secureHandle(IPC_CHANNELS.GET_SAFETY_CONFIG, async () => {
     return safety.getConfig();
   });
 
-  ipcMain.handle(IPC_CHANNELS.TRIGGER_PANIC, async () => {
+  secureHandle(IPC_CHANNELS.TRIGGER_PANIC, async () => {
     safety.triggerPanic('manual');
     return { success: true };
   });
@@ -407,34 +526,34 @@ function registerSafetyHandlers(safety) {
 function registerUtilityHandlers() {
   const mouse = getMouseController();
 
-  ipcMain.handle(IPC_CHANNELS.GET_MOUSE_POSITION, async () => {
+  secureHandle(IPC_CHANNELS.GET_MOUSE_POSITION, async () => {
     return await mouse.getPosition();
   });
 
   // Permission checking
-  ipcMain.handle('permissions:get-status', async () => {
+  secureHandle('permissions:get-status', async () => {
     return getPermissionStatus();
   });
 
-  ipcMain.handle('permissions:request-accessibility', async () => {
+  secureHandle('permissions:request-accessibility', async () => {
     return requestAccessibilityPermission();
   });
 
-  ipcMain.handle(IPC_CHANNELS.MINIMIZE_WINDOW, async () => {
+  secureHandle(IPC_CHANNELS.MINIMIZE_WINDOW, async () => {
     if (mainWindow) {
       mainWindow.minimize();
     }
     return { success: true };
   });
 
-  ipcMain.handle(IPC_CHANNELS.CLOSE_WINDOW, async () => {
+  secureHandle(IPC_CHANNELS.CLOSE_WINDOW, async () => {
     if (mainWindow) {
       mainWindow.close();
     }
     return { success: true };
   });
 
-  ipcMain.handle(IPC_CHANNELS.MAXIMIZE_WINDOW, async () => {
+  secureHandle(IPC_CHANNELS.MAXIMIZE_WINDOW, async () => {
     if (mainWindow) {
       if (mainWindow.isMaximized()) {
         mainWindow.unmaximize();
@@ -445,7 +564,7 @@ function registerUtilityHandlers() {
     return { success: true };
   });
 
-  ipcMain.handle('window:restore', async () => {
+  secureHandle('window:restore', async () => {
     if (mainWindow) {
       mainWindow.restore();
       mainWindow.show();
@@ -456,7 +575,7 @@ function registerUtilityHandlers() {
 }
 
 function registerTemplateHandlers(storage) {
-  ipcMain.handle(IPC_CHANNELS.GET_TEMPLATES, async () => {
+  secureHandle(IPC_CHANNELS.GET_TEMPLATES, async () => {
     try {
       console.log('[IPC] GET_TEMPLATES called');
       const templates = storage.getAllTemplates();
@@ -468,40 +587,44 @@ function registerTemplateHandlers(storage) {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.GET_TEMPLATE, async (event, id) => {
-    return storage.getTemplate(id);
+  secureHandle(IPC_CHANNELS.GET_TEMPLATE, async (event, id) => {
+    return storage.getTemplate(assertString(id, 'template id'));
   });
 
-  ipcMain.handle(IPC_CHANNELS.CREATE_TEMPLATE, async (event, data) => {
-    return storage.createTemplate(data);
+  secureHandle(IPC_CHANNELS.CREATE_TEMPLATE, async (event, data) => {
+    return storage.createTemplate(assertOptionalObject(data, 'template data'));
   });
 
-  ipcMain.handle(IPC_CHANNELS.UPDATE_TEMPLATE, async (event, { id, updates }) => {
+  secureHandle(IPC_CHANNELS.UPDATE_TEMPLATE, async (event, payload) => {
+    const data = assertObject(payload, 'template update payload');
+    const id = assertString(data.id, 'template id');
+    const updates = assertObject(data.updates, 'template updates');
     return storage.updateTemplate(id, updates);
   });
 
-  ipcMain.handle(IPC_CHANNELS.DELETE_TEMPLATE, async (event, id) => {
-    return storage.deleteTemplate(id);
+  secureHandle(IPC_CHANNELS.DELETE_TEMPLATE, async (event, id) => {
+    return storage.deleteTemplate(assertString(id, 'template id'));
   });
 
-  ipcMain.handle(IPC_CHANNELS.DUPLICATE_TEMPLATE, async (event, id) => {
-    return storage.duplicateTemplate(id);
+  secureHandle(IPC_CHANNELS.DUPLICATE_TEMPLATE, async (event, id) => {
+    return storage.duplicateTemplate(assertString(id, 'template id'));
   });
 }
 
 function registerAIHandlers(storage) {
-  ipcMain.handle(IPC_CHANNELS.AI_GET_SUPPORTED_GAMES, async () => {
+  secureHandle(IPC_CHANNELS.AI_GET_SUPPORTED_GAMES, async () => {
     return listSupportedGames();
   });
 
-  ipcMain.handle(IPC_CHANNELS.AI_GENERATE_WORKFLOW, async (event, payload = {}) => {
+  secureHandle(IPC_CHANNELS.AI_GENERATE_WORKFLOW, async (event, payload = {}) => {
     try {
+      const request = assertOptionalObject(payload, 'AI workflow payload');
       const settings = storage.getSettings();
       const availableImages = storage.getAllImages();
-      return await generateWorkflowDraftWithAI(payload, { settings, availableImages });
+      return await generateWorkflowDraftWithAI(request, { settings, availableImages });
     } catch (error) {
       console.error('[IPC] AI generation failed:', error);
-      return { success: false, error: error.message || 'Failed to generate workflow.' };
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to generate workflow.' };
     }
   });
 }
@@ -512,17 +635,17 @@ function registerAIHandlers(storage) {
 function registerQuickRecordHandlers() {
   quickRecord.initIPC();
 
-  ipcMain.handle('quick-record:start', async (event, options) => {
-    return quickRecord.start(options, mainWindow);
+  secureHandle('quick-record:start', async (event, options) => {
+    return quickRecord.start(assertOptionalObject(options, 'quick record options'), mainWindow);
   });
 
-  ipcMain.handle('quick-record:stop', async () => {
+  secureHandle('quick-record:stop', async () => {
     quickRecord.stop();
     return { success: true };
   });
 
-  ipcMain.handle('quick-record:update-mode', async (event, mode) => {
-    quickRecord.updateMode(mode);
+  secureHandle('quick-record:update-mode', async (event, mode) => {
+    quickRecord.updateMode(assertString(mode, 'quick record mode', 40));
     return { success: true };
   });
 }
@@ -533,16 +656,16 @@ function registerQuickRecordHandlers() {
 function registerPreviewHandlers() {
   workflowPreview.initIPC();
 
-  ipcMain.handle('workflow-preview:show', async (event, workflow) => {
-    return workflowPreview.show(workflow, mainWindow);
+  secureHandle('workflow-preview:show', async (event, workflow) => {
+    return workflowPreview.show(assertWorkflowLike(workflow), mainWindow);
   });
 
-  ipcMain.handle('workflow-preview:close', async () => {
+  secureHandle('workflow-preview:close', async () => {
     workflowPreview.close();
     return { success: true };
   });
 
-  ipcMain.handle('workflow-preview:is-open', async () => {
+  secureHandle('workflow-preview:is-open', async () => {
     return workflowPreview.isOpen();
   });
 }
@@ -551,34 +674,36 @@ function registerPreviewHandlers() {
  * Register Floating Bar handlers
  */
 function registerFloatingBarHandlers() {
-  ipcMain.handle('floating-bar:show', async () => {
+  secureHandle('floating-bar:show', async () => {
     floatingBar.showFloatingBar(mainWindow);
     return { success: true };
   });
 
-  ipcMain.handle('floating-bar:hide', async () => {
+  secureHandle('floating-bar:hide', async () => {
     floatingBar.hideFloatingBar();
     return { success: true };
   });
 
-  ipcMain.handle('floating-bar:close', async () => {
+  secureHandle('floating-bar:close', async () => {
     floatingBar.closeFloatingBar();
     return { success: true };
   });
 
-  ipcMain.handle('floating-bar:update-pause', async (event, paused) => {
-    floatingBar.sendToFloatingBar('floating-bar:update-pause', paused);
+  secureHandle('floating-bar:update-pause', async (event, paused) => {
+    floatingBar.sendToFloatingBar('floating-bar:update-pause', assertBoolean(paused, 'paused flag'));
     return { success: true };
   });
 
-  ipcMain.handle('floating-bar:update-stop-timer', async (event, data) => {
-    floatingBar.sendToFloatingBar('floating-bar:stop-timer', data);
+  secureHandle('floating-bar:update-stop-timer', async (event, data) => {
+    floatingBar.sendToFloatingBar('floating-bar:stop-timer', assertObject(data, 'stop timer data'));
     return { success: true };
   });
 
-  ipcMain.handle('floating-bar:sync-wait', async (event, data) => {
-    floatingBar.sendToFloatingBar('floating-bar:wait-start', { duration: data.duration });
-    floatingBar.sendToFloatingBar('floating-bar:wait-tick', data);
+  secureHandle('floating-bar:sync-wait', async (event, data) => {
+    const payload = assertObject(data, 'wait sync data');
+    const duration = assertNumber(payload.duration, 'wait duration');
+    floatingBar.sendToFloatingBar('floating-bar:wait-start', { duration });
+    floatingBar.sendToFloatingBar('floating-bar:wait-tick', payload);
     return { success: true };
   });
 }
@@ -587,23 +712,28 @@ function registerFloatingBarHandlers() {
  * Register Hotkey handlers
  */
 function registerHotkeyHandlers() {
-  ipcMain.handle(IPC_CHANNELS.GET_HOTKEYS, async () => {
+  secureHandle(IPC_CHANNELS.GET_HOTKEYS, async () => {
     return getHotkeys();
   });
 
-  ipcMain.handle(IPC_CHANNELS.SET_HOTKEY, async (event, { accelerator, workflowId, workflowName }) => {
+  secureHandle(IPC_CHANNELS.SET_HOTKEY, async (event, payload) => {
+    const data = assertObject(payload, 'hotkey payload');
+    const accelerator = assertString(data.accelerator, 'hotkey accelerator', 60);
+    const workflowId = assertString(data.workflowId, 'workflow id');
+    const workflowName = assertString(data.workflowName, 'workflow name', 120);
     return setHotkey(accelerator, workflowId, workflowName);
   });
 
-  ipcMain.handle(IPC_CHANNELS.REMOVE_HOTKEY, async (event, workflowId) => {
-    return removeHotkey(workflowId);
+  secureHandle(IPC_CHANNELS.REMOVE_HOTKEY, async (event, workflowId) => {
+    return removeHotkey(assertString(workflowId, 'workflow id'));
   });
 }
 
 export function cleanupIPC() {
-  (Object.values(IPC_CHANNELS) as string[]).forEach((channel) => {
+  registeredHandleChannels.forEach((channel) => {
     ipcMain.removeHandler(channel);
   });
+  registeredHandleChannels.clear();
 
   floatingBar.closeFloatingBar();
   getSafetyService().destroy();

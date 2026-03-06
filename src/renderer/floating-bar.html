@@ -208,7 +208,10 @@
   </div>
 
   <script>
-    const { ipcRenderer } = require('electron');
+    const api = window.overlayAPI?.floatingBar;
+    if (!api) {
+      throw new Error('overlayAPI.floatingBar is unavailable');
+    }
 
     const actionText = document.getElementById('action-text');
     const indicator = document.getElementById('indicator');
@@ -226,25 +229,25 @@
     let isPaused = false;
 
     // Receive updates from main process
-    ipcRenderer.on('floating-bar:update-action', (event, data) => {
+    api.onUpdateAction((data) => {
       actionText.textContent = data.text || 'Running...';
     });
 
-    ipcRenderer.on('floating-bar:update-pause', (event, paused) => {
+    api.onUpdatePause((paused) => {
       isPaused = paused;
       indicator.classList.toggle('paused', paused);
       btnPause.innerHTML = paused ? resumeIcon : pauseIcon;
       btnPause.title = paused ? 'Resume' : 'Pause';
     });
 
-    ipcRenderer.on('floating-bar:wait-start', (event, data) => {
+    api.onWaitStart((data) => {
       waitInfo.classList.add('visible');
       waitFill.style.transition = 'none';
       waitFill.style.width = '100%';
       waitTime.textContent = formatMs(data.duration);
     });
 
-    ipcRenderer.on('floating-bar:wait-tick', (event, data) => {
+    api.onWaitTick((data) => {
       if (data.remaining <= 0 && !data.paused) {
         waitInfo.classList.remove('visible');
         return;
@@ -255,11 +258,11 @@
       waitTime.textContent = data.paused ? `${formatMs(data.remaining)} ⏸` : formatMs(data.remaining);
     });
 
-    ipcRenderer.on('floating-bar:wait-hide', () => {
+    api.onWaitHide(() => {
       waitInfo.classList.remove('visible');
     });
 
-    ipcRenderer.on('floating-bar:stop-timer', (event, data) => {
+    api.onStopTimer((data) => {
       if (data.visible && data.text) {
         stopTimer.textContent = data.text;
         stopTimer.classList.add('visible');
@@ -270,15 +273,15 @@
 
     // Button actions -> send to main
     btnPause.addEventListener('click', () => {
-      ipcRenderer.send('floating-bar:pause');
+      api.sendPause();
     });
 
     btnStop.addEventListener('click', () => {
-      ipcRenderer.send('floating-bar:stop');
+      api.sendStop();
     });
 
     btnExpand.addEventListener('click', () => {
-      ipcRenderer.send('floating-bar:expand');
+      api.sendExpand();
     });
 
     function formatMs(ms) {

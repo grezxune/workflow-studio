@@ -12,7 +12,12 @@
     "build:win": "bun run gen:runtime && electron-vite build && electron-builder --win",
     "build:mac": "bun run gen:runtime && electron-vite build && electron-builder --mac",
     "build:linux": "bun run gen:runtime && electron-vite build && electron-builder --linux",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "typecheck:strict": "tsc -p tsconfig.strict.json --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "bun test",
+    "test:unit": "bun test tests/unit",
+    "test:integration": "bun test tests/integration"
   },
   "author": "Grez Studios",
   "license": "MIT",

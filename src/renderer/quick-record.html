@@ -332,7 +332,10 @@
   </div>
   
   <script>
-    const { ipcRenderer } = require('electron');
+    const api = window.overlayAPI?.quickRecord;
+    if (!api) {
+      throw new Error('overlayAPI.quickRecord is unavailable');
+    }
     
     // Action sequence to add per click
     let actionSequence = ['move', 'click'];
@@ -364,7 +367,7 @@
     };
     
     // Initialize
-    ipcRenderer.on('quick-record:init', (event, data) => {
+    api.onInit((data) => {
       offset = data.offset || { x: 0, y: 0 };
       if (data.sequence) {
         actionSequence = data.sequence;
@@ -467,7 +470,7 @@
     
     // Send sequence update to main process
     function sendSequenceUpdate() {
-      ipcRenderer.send('quick-record:sequence-change', actionSequence);
+      api.sendSequenceChange(actionSequence);
     }
     
     // Preset button clicks
@@ -511,7 +514,7 @@
     // Stop button
     document.getElementById('btn-stop').addEventListener('click', (e) => {
       e.stopPropagation();
-      ipcRenderer.send('quick-record:stop');
+      api.sendStop();
     });
     
     // Track mouse position
@@ -531,7 +534,7 @@
       e.stopPropagation();
       
       // Send position and sequence to main process
-      ipcRenderer.send('quick-record:position', {
+      api.sendPosition({
         x: e.clientX,
         y: e.clientY,
         sequence: actionSequence
@@ -560,7 +563,7 @@
     document.addEventListener('keydown', (e) => {
       switch (e.key) {
         case 'Escape':
-          ipcRenderer.send('quick-record:stop');
+          api.sendStop();
           break;
         case '1':
           actionSequence = [...presets['move']];

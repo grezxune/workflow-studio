@@ -10,6 +10,7 @@ import { app } from 'electron';
 import Store from 'electron-store';
 import { v4 as uuidv4 } from 'uuid';
 import { DEFAULT_SETTINGS } from '../../shared/constants';
+import { assertSafeFileId, resolvePathWithin } from '../lib/safe-path';
 
 class StorageService {
   [key: string]: any;
@@ -357,6 +358,29 @@ class StorageService {
     return path.join(this.workflowsDir, 'workflows');
   }
 
+  assertSafeFileId(id, label = 'id') {
+    return assertSafeFileId(id, label);
+  }
+
+  resolveSafePath(baseDir, fileName) {
+    return resolvePathWithin(baseDir, fileName);
+  }
+
+  getWorkflowFilePath(id) {
+    const safeId = this.assertSafeFileId(id, 'workflow id');
+    return this.resolveSafePath(this.getWorkflowsPath(), `${safeId}.json`);
+  }
+
+  getTemplateFilePath(id) {
+    const safeId = this.assertSafeFileId(id, 'template id');
+    return this.resolveSafePath(this.getTemplatesPath(), `${safeId}.json`);
+  }
+
+  getImageFilePath(id) {
+    const safeId = this.assertSafeFileId(id, 'image id');
+    return this.resolveSafePath(this.imagesDir, `${safeId}.png`);
+  }
+
   getAllWorkflows() {
     const workflowsPath = this.getWorkflowsPath();
     console.log('[Storage] Loading workflows from:', workflowsPath);
@@ -387,7 +411,7 @@ class StorageService {
   }
 
   getWorkflow(id) {
-    const filePath = path.join(this.getWorkflowsPath(), `${id}.json`);
+    const filePath = this.getWorkflowFilePath(id);
 
     if (!fs.existsSync(filePath)) {
       return null;
@@ -448,7 +472,7 @@ class StorageService {
   }
 
   deleteWorkflow(id) {
-    const filePath = path.join(this.getWorkflowsPath(), `${id}.json`);
+    const filePath = this.getWorkflowFilePath(id);
 
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
@@ -476,7 +500,7 @@ class StorageService {
   }
 
   saveWorkflow(workflow) {
-    const filePath = path.join(this.getWorkflowsPath(), `${workflow.id}.json`);
+    const filePath = this.getWorkflowFilePath(workflow.id);
     fs.writeFileSync(filePath, JSON.stringify(workflow, null, 2), 'utf-8');
   }
 
@@ -554,13 +578,13 @@ class StorageService {
   }
 
   saveImage(id, buffer) {
-    const filePath = path.join(this.imagesDir, `${id}.png`);
+    const filePath = this.getImageFilePath(id);
     fs.writeFileSync(filePath, buffer);
     return filePath;
   }
 
   getImagePath(id) {
-    return path.join(this.imagesDir, `${id}.png`);
+    return this.getImageFilePath(id);
   }
 
   renameImage(oldId, newId) {
@@ -738,7 +762,7 @@ class StorageService {
   }
 
   getTemplate(id) {
-    const filePath = path.join(this.getTemplatesPath(), `${id}.json`);
+    const filePath = this.getTemplateFilePath(id);
 
     if (!fs.existsSync(filePath)) {
       return null;
@@ -789,7 +813,7 @@ class StorageService {
   }
 
   deleteTemplate(id) {
-    const filePath = path.join(this.getTemplatesPath(), `${id}.json`);
+    const filePath = this.getTemplateFilePath(id);
 
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
@@ -800,7 +824,7 @@ class StorageService {
   }
 
   saveTemplate(template) {
-    const filePath = path.join(this.getTemplatesPath(), `${template.id}.json`);
+    const filePath = this.getTemplateFilePath(template.id);
     fs.writeFileSync(filePath, JSON.stringify(template, null, 2), 'utf-8');
   }
 

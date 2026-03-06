@@ -98,7 +98,10 @@
   <div class="position-label" id="position-label">0, 0</div>
 
   <script>
-    const { ipcRenderer } = require('electron');
+    const api = window.overlayAPI?.positionPicker;
+    if (!api) {
+      throw new Error('overlayAPI.positionPicker is unavailable');
+    }
 
     const crosshairH = document.getElementById('crosshair-h');
     const crosshairV = document.getElementById('crosshair-v');
@@ -117,7 +120,7 @@
       e.preventDefault();
       e.stopPropagation();
 
-      ipcRenderer.send('position-picked', {
+      api.sendPositionPicked({
         x: e.clientX,
         y: e.clientY
       });
@@ -125,7 +128,7 @@
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        ipcRenderer.send('position-cancelled');
+        api.sendCancelled();
       }
     });
   </script>

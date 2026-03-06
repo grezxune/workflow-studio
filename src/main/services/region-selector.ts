@@ -8,7 +8,7 @@ import { BrowserWindow, ipcMain, screen } from 'electron';
 import fs from 'fs';
 import { getDetectionService } from './detection';
 import { getStorageService } from './storage';
-import { loadRendererPage } from '../lib/renderer-path';
+import { getOverlayPreloadPath, loadRendererPage } from '../lib/renderer-path';
 
 let selectorWindow = null;
 let positionPickerWindow = null;
@@ -100,8 +100,10 @@ function createSelectorWindow() {
     hasShadow: false,
     enableLargerThanScreen: true,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
+      preload: getOverlayPreloadPath(),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true
     }
   });
 
@@ -149,8 +151,10 @@ function createPositionPickerWindow() {
     hasShadow: false,
     enableLargerThanScreen: true,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
+      preload: getOverlayPreloadPath(),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true
     }
   });
 
@@ -232,8 +236,10 @@ function showCapturePreview(imagePath: string, region: any, defaultName: string)
       skipTaskbar: true,
       resizable: false,
       webPreferences: {
-        nodeIntegration: true,
-        contextIsolation: false
+        preload: getOverlayPreloadPath(),
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true
       }
     });
 

@@ -305,7 +305,10 @@
   </div>
 
   <script>
-    const { ipcRenderer } = require('electron');
+    const api = window.overlayAPI?.workflowPreview;
+    if (!api) {
+      throw new Error('overlayAPI.workflowPreview is unavailable');
+    }
     
     const overlay = document.getElementById('overlay');
     let targets = [];
@@ -313,7 +316,7 @@
     let showLabels = true;
     let showLines = true;
 
-    ipcRenderer.on('workflow-preview:init', (event, data) => {
+    api.onInit((data) => {
       targets = data.targets;
       offset = data.offset;
       document.getElementById('target-count').textContent = `${targets.length} targets`;
@@ -352,17 +355,30 @@
       el.className = `target-point ${cls}`;
       el.style.left = `${x}px`;
       el.style.top = `${y}px`;
-      el.innerHTML = '<div class="crosshair-h"></div><div class="crosshair-v"></div>';
+      const crosshairH = document.createElement('div');
+      crosshairH.className = 'crosshair-h';
+      const crosshairV = document.createElement('div');
+      crosshairV.className = 'crosshair-v';
+      el.append(crosshairH, crosshairV);
       overlay.appendChild(el);
 
       if (showLabels) {
         const label = document.createElement('div');
         label.className = `target-label ${cls}`;
-        const nameStr = target.label ? ` <span class="step-name">${target.label}</span>` : '';
         const typeStr = target.actionType === 'mouse_click' 
           ? `Click${target.button !== 'left' ? ` (${target.button})` : ''}${target.clickType === 'double' ? ' x2' : ''}`
           : 'Move';
-        label.innerHTML = `<span class="step-num">#${target.step}</span>${nameStr || `<span class="step-name">${typeStr} (${target.x}, ${target.y})</span>`}`;
+
+        const stepNum = document.createElement('span');
+        stepNum.className = 'step-num';
+        stepNum.textContent = `#${target.step}`;
+        label.appendChild(stepNum);
+
+        const stepName = document.createElement('span');
+        stepName.className = 'step-name';
+        stepName.textContent = target.label || `${typeStr} (${target.x}, ${target.y})`;
+        label.appendChild(stepName);
+
         label.style.left = `${x + 12}px`;
         label.style.top = `${y - 20}px`;
         overlay.appendChild(label);
@@ -384,8 +400,17 @@
       if (showLabels) {
         const label = document.createElement('div');
         label.className = 'target-label bounds';
-        const nameStr = target.label ? ` <span class="step-name">${target.label}</span>` : '';
-        label.innerHTML = `<span class="step-num">#${target.step}</span>${nameStr || `<span class="step-name">Move (${target.width}×${target.height})</span>`}`;
+
+        const stepNum = document.createElement('span');
+        stepNum.className = 'step-num';
+        stepNum.textContent = `#${target.step}`;
+        label.appendChild(stepNum);
+
+        const stepName = document.createElement('span');
+        stepName.className = 'step-name';
+        stepName.textContent = target.label || `Move (${target.width}x${target.height})`;
+        label.appendChild(stepName);
+
         label.style.left = `${x}px`;
         label.style.top = `${y - 22}px`;
         overlay.appendChild(label);
@@ -408,10 +433,10 @@
       svg.style.opacity = '0.25';
 
       const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      line.setAttribute('x1', x1);
-      line.setAttribute('y1', y1);
-      line.setAttribute('x2', x2);
-      line.setAttribute('y2', y2);
+      line.setAttribute('x1', `${x1}`);
+      line.setAttribute('y1', `${y1}`);
+      line.setAttribute('x2', `${x2}`);
+      line.setAttribute('y2', `${y2}`);
       line.setAttribute('stroke', '#a1a1aa');
       line.setAttribute('stroke-width', '1');
       line.setAttribute('stroke-dasharray', '4,4');
@@ -435,13 +460,13 @@
 
     // Close button
     document.getElementById('btn-close').addEventListener('click', () => {
-      ipcRenderer.send('workflow-preview:close');
+      api.close();
     });
 
     // ESC to close
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        ipcRenderer.send('workflow-preview:close');
+        api.close();
       }
     });
   </script>

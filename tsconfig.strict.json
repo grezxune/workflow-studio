@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true
+  },
+  "include": [
+    "src/main/lib/safe-path.ts",
+    "src/main/lib/renderer-path.ts",
+    "src/preload/overlay.ts",
+    "src/types/window.d.ts"
+  ]
+}
