@@ -5,8 +5,10 @@
  * that shows execution status even when the main window is not focused.
  */
 
-import { BrowserWindow, ipcMain, screen } from 'electron';
+import { BrowserWindow, ipcMain, screen, type IpcMainEvent } from 'electron';
 import { getOverlayPreloadPath, loadRendererPage } from '../lib/renderer-path';
+import { verifyAuthorizedSender } from '../lib/ipc-guard';
+import { hardenBrowserWindow } from '../lib/window-security';
 
 let floatingWindow = null;
 let mainWindow = null;
@@ -52,6 +54,7 @@ export function showFloatingBar(mainWin) {
       sandbox: true
     }
   });
+  hardenBrowserWindow(floatingWindow, 'floating-bar-window');
 
   floatingWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
@@ -101,19 +104,38 @@ export function isFloatingBarVisible() {
  * Initialize IPC handlers for floating bar button actions
  */
 export function initFloatingBarIPC() {
-  ipcMain.on('floating-bar:pause', () => {
+  ipcMain.removeAllListeners('floating-bar:pause');
+  ipcMain.removeAllListeners('floating-bar:stop');
+  ipcMain.removeAllListeners('floating-bar:expand');
+
+  const allowFloatingSender = (event: IpcMainEvent, channel: string): boolean =>
+    verifyAuthorizedSender(event, floatingWindow, channel);
+
+  ipcMain.on('floating-bar:pause', (event) => {
+    if (!allowFloatingSender(event, 'floating-bar:pause')) {
+      return;
+    }
+
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('floating-bar:pause-clicked');
     }
   });
 
-  ipcMain.on('floating-bar:stop', () => {
+  ipcMain.on('floating-bar:stop', (event) => {
+    if (!allowFloatingSender(event, 'floating-bar:stop')) {
+      return;
+    }
+
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('floating-bar:stop-clicked');
     }
   });
 
-  ipcMain.on('floating-bar:expand', () => {
+  ipcMain.on('floating-bar:expand', (event) => {
+    if (!allowFloatingSender(event, 'floating-bar:expand')) {
+      return;
+    }
+
     hideFloatingBar();
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('floating-bar:expand-clicked');

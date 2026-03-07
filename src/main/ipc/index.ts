@@ -19,17 +19,13 @@ import floatingBar from '../services/floating-bar';
 import { initHotkeyService, getHotkeys, setHotkey, removeHotkey } from '../services/hotkey-service';
 import { generateWorkflowDraftWithAI } from '../services/ai/ai-workflow-generator';
 import { listSupportedGames } from '../services/ai/game-context-packs';
+import { assertAuthorizedSender } from '../lib/ipc-guard';
 
 let mainWindow: BrowserWindow | null = null;
 const registeredHandleChannels = new Set<string>();
 
 function assertMainWindowSender(event: IpcMainInvokeEvent, channel: string): void {
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    throw new Error(`IPC handler unavailable for channel "${channel}"`);
-  }
-  if (event.sender !== mainWindow.webContents) {
-    throw new Error(`Unauthorized IPC sender for channel "${channel}"`);
-  }
+  assertAuthorizedSender(event, mainWindow, channel);
 }
 
 function secureHandle(

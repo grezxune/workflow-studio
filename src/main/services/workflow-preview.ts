@@ -6,8 +6,10 @@
  * their screen is set up correctly.
  */
 
-import { BrowserWindow, screen, ipcMain } from 'electron';
+import { BrowserWindow, screen, ipcMain, type IpcMainEvent } from 'electron';
 import { getOverlayPreloadPath, loadRendererPage } from '../lib/renderer-path';
+import { verifyAuthorizedSender } from '../lib/ipc-guard';
+import { hardenBrowserWindow } from '../lib/window-security';
 
 let previewWindow = null;
 let mainWindow = null;
@@ -140,6 +142,7 @@ export function showPreviewOverlay(workflow, mainWin) {
       sandbox: true
     }
   });
+  hardenBrowserWindow(previewWindow, 'workflow-preview-window');
 
   previewWindow.setIgnoreMouseEvents(true, { forward: true });
   previewWindow.displayOffset = { x: bounds.x, y: bounds.y };
@@ -186,7 +189,13 @@ export function isPreviewOpen() {
  * Initialize IPC handlers
  */
 export function initPreviewIPC() {
-  ipcMain.on('workflow-preview:close', () => {
+  ipcMain.removeAllListeners('workflow-preview:close');
+
+  ipcMain.on('workflow-preview:close', (event: IpcMainEvent) => {
+    if (!verifyAuthorizedSender(event, previewWindow, 'workflow-preview:close')) {
+      return;
+    }
+
     closePreviewOverlay();
   });
 }

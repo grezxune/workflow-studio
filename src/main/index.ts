@@ -2,7 +2,14 @@
  * Workflow Studio - Main Process Entry Point
  */
 
-import { app, BrowserWindow, globalShortcut, Menu, Tray, nativeImage, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  globalShortcut,
+  Menu,
+  Tray,
+  nativeImage
+} from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { initializeIPC, cleanupIPC } from './ipc/index';
@@ -11,6 +18,7 @@ import { getStorageService } from './services/storage';
 import { initRegionSelectorIPC } from './services/region-selector';
 import { initAutoUpdater } from './services/auto-updater';
 import { getPreloadPath, loadRendererPage } from './lib/renderer-path';
+import { configureSessionSecurity, hardenBrowserWindow, openExternalSafely } from './lib/window-security';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,11 +51,15 @@ function createWindow() {
       preload: getPreloadPath(),
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: true
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false
     },
     icon: getIconPath(),
     show: false
   });
+
+  hardenBrowserWindow(mainWindow, 'main-window');
 
   void loadRendererPage(mainWindow, 'index.html');
 
@@ -82,22 +94,16 @@ function getIconPath() {
 }
 
 function getTrayIconPath() {
-  if (process.platform === 'darwin') {
-    // macOS uses template images, return path without extension
-    return path.join(__dirname, '../../assets', 'tray-iconTemplate');
-  }
   return path.join(__dirname, '../../assets', 'tray-icon.png');
 }
 
 function createTray() {
   try {
     let icon;
+    const iconPath = getTrayIconPath();
     if (process.platform === 'darwin') {
-      // For macOS, use the tray icon with @2x for retina
-      const iconPath = path.join(__dirname, '../../assets', 'tray-icon.png');
       icon = nativeImage.createFromPath(iconPath);
     } else {
-      const iconPath = getIconPath();
       icon = nativeImage.createFromPath(iconPath);
       icon = icon.resize({ width: 16, height: 16 });
     }
@@ -316,7 +322,7 @@ function createMenu() {
         {
           label: 'Documentation',
           click: async () => {
-            await shell.openExternal('https://github.com/grez-studios/workflow-studio');
+            await openExternalSafely('https://github.com/grez-studios/workflow-studio');
           }
         }
       ]
@@ -328,6 +334,8 @@ function createMenu() {
 }
 
 app.whenReady().then(() => {
+  configureSessionSecurity();
+
   // Set dock icon on macOS
   if (process.platform === 'darwin') {
     const dockIcon = nativeImage.createFromPath(getIconPath());
@@ -337,7 +345,7 @@ app.whenReady().then(() => {
   createMenu();
   createWindow();
   createTray();
-  initRegionSelectorIPC();
+  initRegionSelectorIPC(() => mainWindow);
   initAutoUpdater(mainWindow);
 
   app.on('activate', () => {

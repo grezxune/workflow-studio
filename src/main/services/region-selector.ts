@@ -4,15 +4,18 @@
  * Manages the region selection overlay window for screen capture
  */
 
-import { BrowserWindow, ipcMain, screen } from 'electron';
+import { BrowserWindow, ipcMain, screen, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
 import fs from 'fs';
 import { getDetectionService } from './detection';
 import { getStorageService } from './storage';
 import { getOverlayPreloadPath, loadRendererPage } from '../lib/renderer-path';
+import { verifyAuthorizedSender } from '../lib/ipc-guard';
+import { hardenBrowserWindow } from '../lib/window-security';
 
 let selectorWindow = null;
 let positionPickerWindow = null;
 let previewWindow = null;
+let mainWindowResolver: (() => BrowserWindow | null) | null = null;
 let resolvePromise = null;
 let rejectPromise = null;
 let previewResolve = null;
@@ -106,6 +109,7 @@ function createSelectorWindow() {
       sandbox: true
     }
   });
+  hardenBrowserWindow(selectorWindow, 'region-selector-window');
 
   // Store bounds offset for coordinate translation
   selectorWindow.displayOffset = { x: bounds.x, y: bounds.y };
@@ -157,6 +161,7 @@ function createPositionPickerWindow() {
       sandbox: true
     }
   });
+  hardenBrowserWindow(positionPickerWindow, 'position-picker-window');
 
   positionPickerWindow.displayOffset = { x: bounds.x, y: bounds.y };
 
@@ -242,6 +247,7 @@ function showCapturePreview(imagePath: string, region: any, defaultName: string)
         sandbox: true
       }
     });
+    hardenBrowserWindow(previewWindow, 'capture-preview-window');
 
     void loadRendererPage(previewWindow, 'capture-preview.html');
 
@@ -263,11 +269,37 @@ function showCapturePreview(imagePath: string, region: any, defaultName: string)
   });
 }
 
+function allowMainSender(event: IpcMainInvokeEvent, channel: string): boolean {
+  const mainWindow = mainWindowResolver?.() ?? null;
+  return verifyAuthorizedSender(event, mainWindow, channel);
+}
+
+function allowWindowSender(event: IpcMainEvent, window: BrowserWindow | null, channel: string): boolean {
+  return verifyAuthorizedSender(event, window, channel);
+}
+
 /**
  * Initialize IPC handlers for region selection
  */
-export function initRegionSelectorIPC() {
+export function initRegionSelectorIPC(resolveMainWindow: () => BrowserWindow | null) {
+  mainWindowResolver = resolveMainWindow;
+
+  ipcMain.removeAllListeners('region-selected');
+  ipcMain.removeAllListeners('region-cancelled');
+  ipcMain.removeAllListeners('position-picked');
+  ipcMain.removeAllListeners('position-cancelled');
+  ipcMain.removeAllListeners('capture-preview-confirm');
+  ipcMain.removeAllListeners('capture-preview-redo');
+  ipcMain.removeAllListeners('capture-preview-cancel');
+  ipcMain.removeHandler('pick-screen-position');
+  ipcMain.removeHandler('capture-region-template');
+  ipcMain.removeHandler('select-screen-region');
+
   ipcMain.on('region-selected', async (event, region) => {
+    if (!allowWindowSender(event, selectorWindow, 'region-selected')) {
+      return;
+    }
+
     // Translate window-relative coordinates to absolute screen coordinates
     const offset = selectorWindow?.displayOffset || { x: 0, y: 0 };
     const absoluteRegion = {
@@ -286,7 +318,11 @@ export function initRegionSelectorIPC() {
     }
   });
 
-  ipcMain.on('region-cancelled', () => {
+  ipcMain.on('region-cancelled', (event) => {
+    if (!allowWindowSender(event, selectorWindow, 'region-cancelled')) {
+      return;
+    }
+
     closeSelectorWindow();
 
     if (resolvePromise) {
@@ -298,6 +334,10 @@ export function initRegionSelectorIPC() {
 
   // Position picker handlers
   ipcMain.on('position-picked', async (event, position) => {
+    if (!allowWindowSender(event, positionPickerWindow, 'position-picked')) {
+      return;
+    }
+
     const offset = positionPickerWindow?.displayOffset || { x: 0, y: 0 };
     const absolutePosition = {
       x: position.x + offset.x,
@@ -313,7 +353,11 @@ export function initRegionSelectorIPC() {
     }
   });
 
-  ipcMain.on('position-cancelled', () => {
+  ipcMain.on('position-cancelled', (event) => {
+    if (!allowWindowSender(event, positionPickerWindow, 'position-cancelled')) {
+      return;
+    }
+
     closePositionPickerWindow();
 
     if (resolvePromise) {
@@ -324,7 +368,11 @@ export function initRegionSelectorIPC() {
   });
 
   // Handler to pick a position
-  ipcMain.handle('pick-screen-position', async () => {
+  ipcMain.handle('pick-screen-position', async (event) => {
+    if (!allowMainSender(event, 'pick-screen-position')) {
+      return null;
+    }
+
     try {
       const position = await pickPosition();
       return position;
@@ -336,6 +384,10 @@ export function initRegionSelectorIPC() {
 
   // Preview window handlers
   ipcMain.on('capture-preview-confirm', (event, data) => {
+    if (!allowWindowSender(event, previewWindow, 'capture-preview-confirm')) {
+      return;
+    }
+
     closePreviewWindow();
     if (previewResolve) {
       previewResolve({ decision: 'confirm', name: data?.name });
@@ -343,7 +395,11 @@ export function initRegionSelectorIPC() {
     }
   });
 
-  ipcMain.on('capture-preview-redo', () => {
+  ipcMain.on('capture-preview-redo', (event) => {
+    if (!allowWindowSender(event, previewWindow, 'capture-preview-redo')) {
+      return;
+    }
+
     closePreviewWindow();
     if (previewResolve) {
       previewResolve({ decision: 'redo' });
@@ -351,7 +407,11 @@ export function initRegionSelectorIPC() {
     }
   });
 
-  ipcMain.on('capture-preview-cancel', () => {
+  ipcMain.on('capture-preview-cancel', (event) => {
+    if (!allowWindowSender(event, previewWindow, 'capture-preview-cancel')) {
+      return;
+    }
+
     closePreviewWindow();
     if (previewResolve) {
       previewResolve({ decision: 'cancel' });
@@ -361,6 +421,10 @@ export function initRegionSelectorIPC() {
 
   // Handler to capture a region and save as template (with preview/redo loop)
   ipcMain.handle('capture-region-template', async (event, options: any = {}) => {
+    if (!allowMainSender(event, 'capture-region-template')) {
+      return { success: false, error: 'Unauthorized sender' };
+    }
+
     try {
       const detection = getDetectionService();
 
@@ -416,7 +480,11 @@ export function initRegionSelectorIPC() {
   });
 
   // Handler to just select a region without capturing
-  ipcMain.handle('select-screen-region', async () => {
+  ipcMain.handle('select-screen-region', async (event) => {
+    if (!allowMainSender(event, 'select-screen-region')) {
+      return null;
+    }
+
     try {
       const region = await selectRegion();
       return region;

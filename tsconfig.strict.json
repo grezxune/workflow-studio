@@ -6,7 +6,10 @@
   },
   "include": [
     "src/main/lib/safe-path.ts",
+    "src/main/lib/ipc-guard.ts",
     "src/main/lib/renderer-path.ts",
+    "src/main/lib/window-security-rules.ts",
+    "src/main/lib/window-security.ts",
     "src/preload/overlay.ts",
     "src/types/window.d.ts"
   ]

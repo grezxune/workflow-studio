@@ -8,16 +8,12 @@
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 import { ipcMain, type IpcMainInvokeEvent } from 'electron';
+import { assertAuthorizedSender } from '../lib/ipc-guard';
 
 let mainWindow: any = null;
 
 function assertMainWindowSender(event: IpcMainInvokeEvent, channel: string): void {
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    throw new Error(`Update channel unavailable: ${channel}`);
-  }
-  if (event.sender !== mainWindow.webContents) {
-    throw new Error(`Unauthorized sender for ${channel}`);
-  }
+  assertAuthorizedSender(event, mainWindow, channel);
 }
 
 /**

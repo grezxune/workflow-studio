@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-03-06
+- Added centralized BrowserWindow hardening (`src/main/lib/window-security.ts`) to deny untrusted navigation, block `window.open`, and block webview attachment.
+- Added safe external URL policy (`http/https` only) and routed app external link opens through guarded helper logic.
+- Added centralized IPC sender guard utilities (`src/main/lib/ipc-guard.ts`) and applied them to shared IPC and updater handlers.
+- Enforced sender validation for overlay event channels in `region-selector`, `quick-record`, `floating-bar`, and `workflow-preview` services.
+- Made overlay IPC registration idempotent by clearing prior listeners/handlers before re-registration.
+- Strengthened preload architecture by importing shared IPC channel constants directly instead of duplicating channel maps.
+- Added unit tests for window-security URL rules and IPC sender guard behavior.
+- Added first-class lint/format tooling setup (`eslint.config.mjs`, Prettier config) and changed `lint` script to run ESLint + TypeScript checks.
+- Added CSP meta tags to auxiliary renderer HTML pages to explicitly constrain script/style/image sources.
+- Expanded strict typecheck scope to include new security libraries.
+
 ## 2026-03-05
 - Migrated app architecture to `electron-vite` with React + TypeScript renderer entrypoint.
 - Converted main-process and shared runtime modules from JavaScript to TypeScript (`src/main/**`, `src/shared/**`).

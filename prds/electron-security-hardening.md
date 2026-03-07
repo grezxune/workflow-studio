@@ -5,6 +5,7 @@ owner: Tommy
 log:
   - 2026-03-05: Initial requirements documented for Electron security, IPC validation, and runtime hardening.
   - 2026-03-05: Implemented overlay preload isolation, IPC sender/payload validation, path safety guards, and test gates.
+  - 2026-03-06: Added browser-window navigation hardening, centralized IPC sender guard library, overlay IPC sender enforcement, and formal lint/format tooling gates.
 ---
 
 ## Problem
@@ -46,6 +47,10 @@ KPIs:
 6. Runtime generator must transpile TS chunk files before emit and validate generated JS parseability.
 7. Renderer toast rendering must treat title/message as text, not HTML.
 8. Repo must expose test scripts and include at least one unit and one integration test for new guardrails.
+9. Every BrowserWindow must deny untrusted navigation and `window.open` requests by default.
+10. Overlay event-channel IPC (`ipcMain.on`) must enforce sender identity, not just invoke-channel IPC (`ipcMain.handle`).
+11. Security rules for trusted renderer URLs and external URLs must be unit-tested.
+12. Linting must run as a first-class gate (not an alias of typecheck).
 
 ## Non-functional Requirements
 - Keep behavior backwards compatible for expected workflow operations.
@@ -76,6 +81,8 @@ Mitigations:
 - Add payload guards for string/object/number/boolean/workflow-like data.
 - Add safe-path checks (`assertSafeFileId`, `resolvePathWithin`).
 - Replace direct toast HTML interpolation with DOM text assignment.
+- Add centralized BrowserWindow hardening (`setWindowOpenHandler`, `will-navigate`, `will-attach-webview`) and safe external URL policy.
+- Add reusable sender guard primitives for all IPC patterns (`handle`, `on`, overlay channels).
 
 ## Performance Strategy & Budgets
 Budgets:
@@ -89,6 +96,7 @@ Strategy:
 ## Open Questions
 - Whether to migrate remaining runtime chunk string-templating paths to fully DOM-based rendering.
 - Whether to split `ipc/index.ts` into domain modules with formal schemas.
+- Whether to move overlay pages from inline scripts to bundled module scripts so CSP can drop script `unsafe-inline`.
 
 ## Risks & Mitigations
 - Risk: Stricter ID validation may reject previously accepted unsafe filenames.
@@ -100,6 +108,8 @@ Strategy:
 - Security grep checks remain clean after release.
 - No regression in core workflow execution and hotkeys.
 - CI/local checks catch invalid runtime chunk output before packaging.
+- Unauthorized overlay IPC senders cannot trigger action channels.
+- Main window blocks arbitrary navigation and new-window creation attempts.
 
 ## Rollout Plan
 1. Ship hardening in next patch release.
@@ -109,4 +119,5 @@ Strategy:
 ## Next Steps
 1. Add schema-based validators (zod/io-ts) for deeper nested payload contracts.
 2. Migrate high-risk `innerHTML` usage paths to safer DOM construction.
-3. Expand integration tests to include IPC sender-deny scenarios.
+3. Move overlay HTML pages to external module scripts and tighten CSP to remove script `unsafe-inline`.
+4. Split `src/main/ipc/index.ts` by domain to reduce file size and increase auditability.

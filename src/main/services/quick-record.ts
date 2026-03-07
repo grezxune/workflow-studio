@@ -5,8 +5,10 @@
  * during quick record mode.
  */
 
-import { BrowserWindow, screen, ipcMain } from 'electron';
+import { BrowserWindow, screen, ipcMain, type IpcMainEvent } from 'electron';
 import { getOverlayPreloadPath, loadRendererPage } from '../lib/renderer-path';
+import { verifyAuthorizedSender } from '../lib/ipc-guard';
+import { hardenBrowserWindow } from '../lib/window-security';
 
 let quickRecordWindow = null;
 let resolvePromise = null;
@@ -108,6 +110,7 @@ function createQuickRecordWindow() {
       sandbox: true
     }
   });
+  hardenBrowserWindow(quickRecordWindow, 'quick-record-window');
   
   quickRecordWindow.displayOffset = { x: bounds.x, y: bounds.y };
   quickRecordWindow.setBounds(bounds);
@@ -135,7 +138,18 @@ function createQuickRecordWindow() {
  * Initialize IPC handlers for quick record
  */
 export function initQuickRecordIPC() {
+  ipcMain.removeAllListeners('quick-record:position');
+  ipcMain.removeAllListeners('quick-record:sequence-change');
+  ipcMain.removeAllListeners('quick-record:stop');
+
+  const allowQuickRecordSender = (event: IpcMainEvent, channel: string): boolean =>
+    verifyAuthorizedSender(event, quickRecordWindow, channel);
+
   ipcMain.on('quick-record:position', (event, data) => {
+    if (!allowQuickRecordSender(event, 'quick-record:position')) {
+      return;
+    }
+
     if (!quickRecordWindow || !mainWindow) return;
     
     const offset = quickRecordWindow.displayOffset || { x: 0, y: 0 };
@@ -151,10 +165,18 @@ export function initQuickRecordIPC() {
   });
   
   ipcMain.on('quick-record:sequence-change', (event, sequence) => {
+    if (!allowQuickRecordSender(event, 'quick-record:sequence-change')) {
+      return;
+    }
+
     // Store sequence if needed for future use
   });
   
-  ipcMain.on('quick-record:stop', () => {
+  ipcMain.on('quick-record:stop', (event) => {
+    if (!allowQuickRecordSender(event, 'quick-record:stop')) {
+      return;
+    }
+
     stopQuickRecord();
   });
 }
