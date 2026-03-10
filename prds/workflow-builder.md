@@ -12,6 +12,7 @@ log:
   - 2026-02-23: Expanded game-aware AI workflow generation with hybrid game selection, internal game context packs, and evaluation requirements
   - 2026-02-23: Implemented initial game-aware AI generation in app (OpenRouter, model selection, Codex fallback, editor composer UI)
   - 2026-03-05: Migrated runtime architecture to Electron + Vite with React renderer host and TypeScript main/preload/shared modules
+  - 2026-03-06: Corrected sandboxed preload output to standalone CommonJS bundles so renderer bridge APIs load reliably in Electron windows
 ---
 
 # Visual Workflow Builder
@@ -57,6 +58,7 @@ Workflow Studio aims to be a premium automation tool for gamers. The visual work
 - Renderer now bridges preload-dispatched native menu events (`app:navigate`, `app:action`) back into runtime navigation and workflow command handlers for consistent menu/shortcut behavior.
 - Runtime delivery now uses a generated external script bundle (`public/runtime/runtime.bundle.js`) rather than inline script text injection, reducing CSP attack surface and stabilizing deterministic load order.
 - Renderer CSP now restricts script execution to `self` (no script `unsafe-inline` / `unsafe-eval`), and Electron main window now runs with renderer sandbox enabled.
+- Sandboxed preload scripts now ship as isolated CommonJS bundles (`.cjs`) because Electron sandboxed preload contexts do not execute ESM preload files reliably.
 - Project typecheck gate is restored with bundler-compatible TS settings and explicit exclusion of legacy script-runtime chunk files from module-level TS checks while their generated bundle path remains active.
 - Secondary overlay windows remain file-based (`position-picker`, `region-select`, `workflow-preview`, `floating-bar`, `quick-record`, `capture-preview`) and are loaded through shared dev/prod URL resolution.
 

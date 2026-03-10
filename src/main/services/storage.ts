@@ -11,6 +11,8 @@ import Store from 'electron-store';
 import { v4 as uuidv4 } from 'uuid';
 import { DEFAULT_SETTINGS } from '../../shared/constants';
 import { assertSafeFileId, resolvePathWithin } from '../lib/safe-path';
+import { getStoreEncryptionKey } from '../lib/store-encryption-key';
+import { createStoreWithRecovery } from '../lib/store-recovery';
 
 class StorageService {
   [key: string]: any;
@@ -18,13 +20,12 @@ class StorageService {
   constructor() {
     console.log('[Storage] Initializing StorageService...');
     try {
-      const encryptionKey = process.env.WORKFLOW_STUDIO_STORE_KEY;
-      if (!encryptionKey) {
-        console.warn('[Storage] WORKFLOW_STUDIO_STORE_KEY is not set; settings will be stored without encryption.');
-      }
+      const encryptionKey = getStoreEncryptionKey();
+      const storeDir = app.getPath('userData');
 
       const storeOptions: any = {
         name: 'config',
+        cwd: storeDir,
         defaults: {
           settings: DEFAULT_SETTINGS,
           recentWorkflows: []
@@ -35,7 +36,11 @@ class StorageService {
         storeOptions.encryptionKey = encryptionKey;
       }
 
-      this.store = new Store(storeOptions);
+      this.store = createStoreWithRecovery(storeOptions, {
+        createStore: (options) => new Store(options),
+        logger: console,
+        storeDir
+      });
       console.log('[Storage] Store created successfully');
     } catch (error) {
       console.error('[Storage] Failed to create store:', error);

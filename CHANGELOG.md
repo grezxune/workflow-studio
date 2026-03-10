@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+- Fixed Electron sandboxed preload loading by emitting CommonJS preload bundles (`.cjs`) instead of ESM (`.mjs`), restoring `workflowAPI`/`overlayAPI` bridge availability in renderer windows.
+- Fixed a dev-startup crash where unreadable or legacy-encrypted Electron settings files caused the main process to abort before the app window appeared.
+- Added automatic quarantine-and-recreate recovery for invalid `electron-store` config files during boot.
+- Replaced manual `WORKFLOW_STUDIO_STORE_KEY` setup with automatic OS-backed encryption-key provisioning for the local settings store.
+
 ## 2026-03-06
 - Added centralized BrowserWindow hardening (`src/main/lib/window-security.ts`) to deny untrusted navigation, block `window.open`, and block webview attachment.
 - Added safe external URL policy (`http/https` only) and routed app external link opens through guarded helper logic.

@@ -1,20 +1,25 @@
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { app } from 'electron';
 import type { BrowserWindow } from 'electron';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+function getAppRootPath(): string {
+  return app.getAppPath();
+}
+
+function getBuiltOutputPath(...segments: string[]): string {
+  return path.join(getAppRootPath(), 'out', ...segments);
+}
 
 export function getPreloadPath(): string {
-  return path.join(__dirname, '../../preload/index.mjs');
+  return getBuiltOutputPath('preload', 'index.cjs');
 }
 
 export function getOverlayPreloadPath(): string {
-  return path.join(__dirname, '../../preload/overlay.mjs');
+  return getBuiltOutputPath('preload', 'overlay.cjs');
 }
 
 export function getRendererHtmlPath(fileName: string): string {
-  return path.join(__dirname, '../../renderer', fileName);
+  return getBuiltOutputPath('renderer', fileName);
 }
 
 export function getRendererDevUrl(fileName: string): string | null {

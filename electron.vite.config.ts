@@ -7,12 +7,17 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()]
   },
   preload: {
-    plugins: [externalizeDepsPlugin()],
     build: {
+      externalizeDeps: false,
       rollupOptions: {
         input: {
           index: path.resolve(__dirname, 'src/preload/index.ts'),
           overlay: path.resolve(__dirname, 'src/preload/overlay.ts')
+        },
+        output: {
+          format: 'cjs',
+          entryFileNames: '[name].cjs',
+          chunkFileNames: '[name]-[hash].cjs'
         }
       }
     }
