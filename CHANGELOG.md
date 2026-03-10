@@ -3,6 +3,8 @@
 All notable changes to this project are documented in this file.
 
 ## Unreleased
+
+## 2026-03-10
 - Fixed Electron sandboxed preload loading by emitting CommonJS preload bundles (`.cjs`) instead of ESM (`.mjs`), restoring `workflowAPI`/`overlayAPI` bridge availability in renderer windows.
 - Fixed a dev-startup crash where unreadable or legacy-encrypted Electron settings files caused the main process to abort before the app window appeared.
 - Added automatic quarantine-and-recreate recovery for invalid `electron-store` config files during boot.
