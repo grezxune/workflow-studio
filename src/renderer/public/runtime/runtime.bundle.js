@@ -2745,9 +2745,12 @@ async function loadAISupportedGames() {
     }
 }
 function syncAIComposerFromSettings() {
-    const preferredModel = state.settings?.ai?.preferredModel || 'codex-5.3';
+    const preferredModel = state.settings?.ai?.preferredModel || 'gpt-5.5';
     if (aiModelSelect) {
         aiModelSelect.value = preferredModel;
+        // Fall back to the default if the stored model is no longer an option
+        if (!aiModelSelect.value)
+            aiModelSelect.value = 'gpt-5.5';
     }
 }
 function updateAIContextPill() {
@@ -2805,7 +2808,7 @@ async function handleAIGenerateWorkflow() {
         result = await window.workflowAPI.generateWorkflowWithAI({
             prompt,
             gameId: aiGameSelect?.value || 'generic',
-            preferredModel: aiModelSelect?.value || state.settings?.ai?.preferredModel || 'codex-5.3',
+            preferredModel: aiModelSelect?.value || state.settings?.ai?.preferredModel || 'gpt-5.5',
             applyMode: aiApplyModeSelect?.value || 'replace',
             currentWorkflow: state.currentWorkflow
         });
@@ -6559,7 +6562,7 @@ function setupSettingsEvents() {
     // Preferred AI model
     aiPreferredModelSelect?.addEventListener('change', async () => {
         state.settings.ai = state.settings.ai || {};
-        state.settings.ai.preferredModel = aiPreferredModelSelect.value || 'codex-5.3';
+        state.settings.ai.preferredModel = aiPreferredModelSelect.value || 'gpt-5.5';
         await saveSettings({ ai: state.settings.ai });
     });
 }
@@ -6611,7 +6614,10 @@ async function loadSettingsIntoUI() {
     // AI assistant settings
     const ai = state.settings.ai || {};
     aiOpenRouterKeyInput.value = ai.openRouterApiKey || '';
-    aiPreferredModelSelect.value = ai.preferredModel || 'codex-5.3';
+    aiPreferredModelSelect.value = ai.preferredModel || 'gpt-5.5';
+    // Fall back to the default if the stored model is no longer an option
+    if (!aiPreferredModelSelect.value)
+        aiPreferredModelSelect.value = 'gpt-5.5';
     // Load image gallery
     loadImageGallery();
 }

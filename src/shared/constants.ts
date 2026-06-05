@@ -212,7 +212,7 @@ export const DEFAULT_SETTINGS = {
   floatingBarBounds: null,
   ai: {
     openRouterApiKey: '',
-    preferredModel: 'codex-5.3'
+    preferredModel: 'gpt-5.5'
   }
 };
 

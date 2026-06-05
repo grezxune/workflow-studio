@@ -139,7 +139,7 @@ function setupSettingsEvents() {
   // Preferred AI model
   aiPreferredModelSelect?.addEventListener('change', async () => {
     state.settings.ai = state.settings.ai || {};
-    state.settings.ai.preferredModel = aiPreferredModelSelect.value || 'codex-5.3';
+    state.settings.ai.preferredModel = aiPreferredModelSelect.value || 'gpt-5.5';
     await saveSettings({ ai: state.settings.ai });
   });
 }
@@ -201,7 +201,9 @@ async function loadSettingsIntoUI() {
   // AI assistant settings
   const ai = state.settings.ai || {};
   aiOpenRouterKeyInput.value = ai.openRouterApiKey || '';
-  aiPreferredModelSelect.value = ai.preferredModel || 'codex-5.3';
+  aiPreferredModelSelect.value = ai.preferredModel || 'gpt-5.5';
+  // Fall back to the default if the stored model is no longer an option
+  if (!aiPreferredModelSelect.value) aiPreferredModelSelect.value = 'gpt-5.5';
 
   // Load image gallery
   loadImageGallery();

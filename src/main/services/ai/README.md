@@ -9,7 +9,7 @@ This folder contains the OpenRouter-backed workflow generation service used by t
 
 ## Notes
 
-- Preferred model options are product-level aliases:
-  - `codex-5.3` (falls back to `openai/gpt-5.2-codex` if 5.3 is unavailable on OpenRouter)
-  - `opus-4.6`
+- Preferred model options are product-level aliases that resolve to an OpenRouter model chain (first available wins):
+  - `gpt-5.5` (default) → `openai/gpt-5.5-pro`
+  - `opus-4.8` → `anthropic/claude-opus-4.8-fast`, falling back to `anthropic/claude-opus-4.8`
 - Service returns workflow drafts only. Execution still requires explicit user action in the editor.

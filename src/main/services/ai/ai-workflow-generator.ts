@@ -6,11 +6,11 @@ import { inferGameContextFromPrompt, getGameContextPackById } from './game-conte
 
 const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models';
 const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_MODEL_PREFERENCE = 'codex-5.3';
+const DEFAULT_MODEL_PREFERENCE = 'gpt-5.5';
 
 const MODEL_CHAIN = {
-  'codex-5.3': ['openai/gpt-5.3-codex', 'openai/gpt-5.2-codex', 'openai/gpt-5-codex'],
-  'opus-4.6': ['anthropic/claude-opus-4.6', 'openai/gpt-5.2-codex']
+  'gpt-5.5': ['openai/gpt-5.5-pro'],
+  'opus-4.8': ['anthropic/claude-opus-4.8-fast', 'anthropic/claude-opus-4.8']
 };
 
 let cachedModels = { ids: null, fetchedAt: 0 };
@@ -135,9 +135,9 @@ async function fetchAvailableModelIds() {
     return ids;
   } catch (error) {
     const fallbackIds = new Set([
-      'openai/gpt-5.2-codex',
-      'openai/gpt-5-codex',
-      'anthropic/claude-opus-4.6'
+      'openai/gpt-5.5-pro',
+      'anthropic/claude-opus-4.8-fast',
+      'anthropic/claude-opus-4.8'
     ]);
     cachedModels = { ids: fallbackIds, fetchedAt: now };
     return fallbackIds;
