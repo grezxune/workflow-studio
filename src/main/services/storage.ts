@@ -6,6 +6,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { app } from 'electron';
 import Store from 'electron-store';
 import { v4 as uuidv4 } from 'uuid';
@@ -50,6 +51,10 @@ class StorageService {
       throw error;
     }
 
+    // Recover config orphaned when the legacy→hardened encryption-key change
+    // quarantined the old (legacy-key-encrypted) store as config.corrupt-*.json.
+    this.recoverLegacyConfig(app.getPath('userData'));
+
     this.workflowsDir = null;
     this.imagesDir = null;
     this.detectionsDir = null;
@@ -61,6 +66,43 @@ class StorageService {
     } catch (error) {
       console.error('[Storage] Failed to initialize directories:', error);
       throw error;
+    }
+  }
+
+  recoverLegacyConfig(storeDir) {
+    let corruptName;
+    try {
+      const entries = fs.readdirSync(storeDir).filter((f) => /^config\.corrupt-.*\.json$/i.test(f));
+      if (entries.length === 0) return;
+      entries.sort();
+      corruptName = entries[entries.length - 1]; // newest quarantined file
+      const corruptPath = path.join(storeDir, corruptName);
+      const data = fs.readFileSync(corruptPath);
+      const iv = data.slice(0, 16);
+      const ciphertext = data.slice(17); // format: [iv:16][':' :1][ciphertext]
+      const decode = (salt) => {
+        const password = crypto.pbkdf2Sync('workflow-studio-v1', salt, 10000, 32, 'sha512');
+        const decipher = crypto.createDecipheriv('aes-256-cbc', password, iv);
+        return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+      };
+      // conf primary scheme uses the IV buffer as salt; legacy used iv.toString().
+      let json;
+      try { json = decode(iv); } catch { json = decode(iv.toString()); }
+      const legacy = JSON.parse(json);
+
+      let restored = 0;
+      for (const key of ['settings', 'recentWorkflows', 'executionHistory', 'hotkeys', 'imageFolders', 'imageFolderMap']) {
+        if (legacy[key] !== undefined) {
+          this.store.set(key, legacy[key]);
+          restored++;
+        }
+      }
+
+      // Mark recovered so this only ever runs once (and the old data is kept, not deleted).
+      fs.renameSync(corruptPath, corruptPath.replace('.corrupt-', '.recovered-'));
+      console.log(`[Storage] Recovered ${restored} config section(s) from legacy ${corruptName}`);
+    } catch (error) {
+      console.warn(`[Storage] Legacy config recovery skipped (${corruptName || 'no file'}):`, error.message);
     }
   }
 
