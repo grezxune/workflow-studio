@@ -146,7 +146,9 @@ async function migrateLegacyExecutionHistory() {
  */
 function addToExecutionHistory() {
   renderRecentWorkflows();
-  if (typeof renderAnalyticsDashboard === 'function' && state.currentView === 'analytics') {
+  if (typeof requestAnalyticsDashboardRefresh === 'function') {
+    requestAnalyticsDashboardRefresh();
+  } else if (typeof renderAnalyticsDashboard === 'function' && state.currentView === 'analytics') {
     renderAnalyticsDashboard();
   }
 }

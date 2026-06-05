@@ -72,6 +72,8 @@ function setPauseButtonState(paused) {
 async function stopExecution() {
   clearScheduledStop();
   await window.workflowAPI.emergencyStop();
+  completeAnalyticsLiveExecution('completed');
+  addToExecutionHistory();
   hideWaitCountdown();
   hideExecutionOverlay();
 }

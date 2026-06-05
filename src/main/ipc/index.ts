@@ -110,7 +110,7 @@ export function initializeIPC(window: BrowserWindow) {
 
   safety.onPanic(async (source) => {
     await executor.emergencyStop();
-    sendToRenderer(IPC_CHANNELS.EXECUTION_STOPPED, { source });
+    sendToRenderer(IPC_CHANNELS.EXECUTION_STOPPED, { source, status: 'completed' });
   });
 
   safety.onPause((source) => {
@@ -183,13 +183,13 @@ function setupExecutorEvents(executor, storage) {
 
   executor.on('workflow:complete', (data) => {
     recordExecutorRun('completed', data);
-    sendToRenderer(IPC_CHANNELS.EXECUTION_COMPLETED, data);
+    sendToRenderer(IPC_CHANNELS.EXECUTION_COMPLETED, { ...data, status: 'completed' });
     floatingBar.closeFloatingBar();
   });
 
   executor.on('workflow:stopped', (data) => {
-    recordExecutorRun('stopped', data);
-    sendToRenderer(IPC_CHANNELS.EXECUTION_STOPPED, data);
+    recordExecutorRun('completed', data);
+    sendToRenderer(IPC_CHANNELS.EXECUTION_STOPPED, { ...data, status: 'completed' });
     floatingBar.closeFloatingBar();
   });
 

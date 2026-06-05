@@ -17,6 +17,10 @@ import { createStoreWithRecovery } from '../lib/store-recovery';
 
 const MAX_EXECUTION_HISTORY = 1000;
 
+function normalizeExecutionStatus(status: unknown): string {
+  return status === 'stopped' ? 'completed' : (typeof status === 'string' && status ? status : 'completed');
+}
+
 class StorageService {
   [key: string]: any;
 
@@ -54,6 +58,7 @@ class StorageService {
     // Recover config orphaned when the legacy→hardened encryption-key change
     // quarantined the old (legacy-key-encrypted) store as config.corrupt-*.json.
     this.recoverLegacyConfig(app.getPath('userData'));
+    this.migrateStoppedExecutionsToCompleted();
 
     this.workflowsDir = null;
     this.imagesDir = null;
@@ -103,6 +108,27 @@ class StorageService {
       console.log(`[Storage] Recovered ${restored} config section(s) from legacy ${corruptName}`);
     } catch (error) {
       console.warn(`[Storage] Legacy config recovery skipped (${corruptName || 'no file'}):`, error.message);
+    }
+  }
+
+  migrateStoppedExecutionsToCompleted() {
+    const history = this.store.get('executionHistory', []);
+    if (!Array.isArray(history) || history.length === 0) return;
+
+    let changed = false;
+    const migrated = history.map((record) => {
+      if (!record || record.status !== 'stopped') return record;
+      changed = true;
+      return {
+        ...record,
+        status: 'completed',
+        error: null
+      };
+    });
+
+    if (changed) {
+      this.store.set('executionHistory', migrated);
+      console.log('[Storage] Migrated stopped execution history entries to completed');
     }
   }
 
@@ -585,7 +611,7 @@ class StorageService {
       id: entry.id || uuidv4(),
       workflowId: entry.workflowId,
       workflowName: entry.workflowName || 'Untitled Workflow',
-      status: entry.status || 'completed',
+      status: normalizeExecutionStatus(entry.status),
       startedAt: entry.startedAt || now,
       endedAt: entry.endedAt || now,
       durationMs,
@@ -643,7 +669,7 @@ class StorageService {
       const durationMs = Number.isFinite(entry.durationMs)
         ? entry.durationMs
         : (Number.isFinite(entry.duration) ? entry.duration : Math.max(0, +new Date(endedAt) - +new Date(startedAt)));
-      const status = entry.status || 'completed';
+      const status = normalizeExecutionStatus(entry.status);
       const dedupeKey = `${entry.workflowId}:${startedAt}:${status}`;
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
@@ -734,10 +760,12 @@ class StorageService {
   }
 
   buildExecutionSummary(history: any[] = []) {
-    const records = Array.isArray(history) ? history : [];
+    const records = Array.isArray(history)
+      ? history.map(record => record ? { ...record, status: normalizeExecutionStatus(record.status) } : record)
+      : [];
     const totalRuns = records.length;
     const completedRuns = records.filter(record => record.status === 'completed').length;
-    const stoppedRuns = records.filter(record => record.status === 'stopped').length;
+    const stoppedRuns = 0;
     const errorRuns = records.filter(record => record.status === 'error').length;
     const dryRuns = records.filter(record => record.dryRun).length;
     const durations = records

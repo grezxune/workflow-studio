@@ -22,6 +22,12 @@
       --danger: #f87171;
       --danger-deep: #ef4444;
       --flash-color: #22d3ee;
+      /* Shared sizing so every chip / timer / pill reads as one component
+         family — consistent height, corner radius, text and icon size. */
+      --chip-h: 34px;
+      --chip-radius: 10px;
+      --chip-font: 13px;
+      --icon: 16px;
     }
 
     * {
@@ -45,19 +51,30 @@
       --accent-deep: #06b6d4;
       position: relative;
       display: flex;
-      align-items: flex-start;
-      gap: 16px;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
       min-height: 100%;
       width: 100%;
-      padding: 14px 18px 16px;
+      padding: 16px 22px;
       background:
         radial-gradient(120% 140% at 18px 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 60%),
         linear-gradient(177deg, var(--bg-top), var(--bg-bottom));
-      border: 1px solid var(--border);
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
       overflow: hidden;
       isolation: isolate;
+      /* Frameless window: the whole bar acts as the drag handle so it can be
+         moved by grabbing anywhere. Interactive controls opt back out below. */
+      -webkit-app-region: drag;
     }
+
+    /* Clickable controls must leave the drag region or they won't receive
+       pointer events on a frameless Windows window. */
+    .btn,
+    .autostop,
+    .variables,
+    button,
+    input { -webkit-app-region: no-drag; }
 
     /* Soft moving glow tied to the accent colour */
     .bar::before {
@@ -92,18 +109,16 @@
     /* ---------- Status orb ---------- */
     .status {
       flex-shrink: 0;
-      width: 22px;
+      width: 26px;
       display: flex;
       align-items: center;
       justify-content: center;
-      align-self: flex-start;
-      margin-top: 4px;
     }
 
     .orb {
       position: relative;
-      width: 13px;
-      height: 13px;
+      width: 15px;
+      height: 15px;
       border-radius: 50%;
       background: radial-gradient(circle at 35% 30%, #ffffff, var(--accent) 55%, var(--accent-deep));
       box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 75%, transparent);
@@ -112,7 +127,7 @@
     .orb::after {
       content: '';
       position: absolute;
-      inset: -6px;
+      inset: -7px;
       border-radius: 50%;
       border: 1.5px solid color-mix(in srgb, var(--accent) 60%, transparent);
       animation: orbRing 1.8s ease-out infinite;
@@ -127,20 +142,23 @@
 
     /* ---------- Info column ---------- */
     .info {
-      flex: 1;
+      flex: 1 1 auto;
       min-width: 0;
+      /* Cap the content width so a very wide window centers the cluster
+         instead of stretching it edge to edge. */
+      max-width: 720px;
       display: flex;
       flex-direction: column;
-      gap: 7px;
+      gap: 9px;
     }
 
     .eyebrow {
       display: inline-flex;
       align-items: center;
-      gap: 7px;
-      font-size: 10.5px;
+      gap: 8px;
+      font-size: 11px;
       font-weight: 700;
-      letter-spacing: 0.14em;
+      letter-spacing: 0.13em;
       text-transform: uppercase;
       color: var(--accent);
     }
@@ -148,10 +166,10 @@
     .eyebrow .eyebrow-text { line-height: 1; }
 
     .action-text {
-      font-size: clamp(15px, 1.7vw, 19px);
+      font-size: clamp(16px, 1.7vw, 21px);
       font-weight: 650;
       color: var(--text);
-      line-height: 1.25;
+      line-height: 1.2;
       letter-spacing: -0.01em;
       display: -webkit-box;
       -webkit-line-clamp: 2;
@@ -162,18 +180,29 @@
     .sub-row {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       flex-wrap: wrap;
       min-height: 0;
     }
 
-    /* ---------- Wait chip ---------- */
+    /* One sizing system for every chip / timer / pill in the sub-row and the
+       variables row, so nothing looks like a different size or shape. */
+    .wait-chip,
+    .autostop-trigger,
+    .autostop-editor,
+    .autostop-active,
+    .variable-pill {
+      height: var(--chip-h);
+      border-radius: var(--chip-radius);
+      font-size: var(--chip-font);
+    }
+
+    /* ---------- Wait timer chip ---------- */
     .wait-chip {
       display: none;
       align-items: center;
-      gap: 9px;
-      padding: 5px 11px 5px 9px;
-      border-radius: 999px;
+      gap: 10px;
+      padding: 0 14px;
       background: var(--surface);
       border: 1px solid var(--border);
     }
@@ -181,19 +210,20 @@
     .wait-chip.visible { display: inline-flex; }
 
     .wait-spinner {
-      width: 12px;
-      height: 12px;
+      width: 15px;
+      height: 15px;
       border-radius: 50%;
       border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
       border-top-color: var(--accent);
       animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
     }
 
     @keyframes spin { to { transform: rotate(360deg); } }
 
     .wait-track {
-      width: 78px;
-      height: 5px;
+      width: 96px;
+      height: 6px;
       border-radius: 999px;
       background: rgba(255, 255, 255, 0.1);
       overflow: hidden;
@@ -208,11 +238,11 @@
     }
 
     .wait-time {
-      font-size: 12.5px;
-      font-weight: 650;
+      font-weight: 700;
       color: var(--accent);
       font-variant-numeric: tabular-nums;
-      min-width: 30px;
+      min-width: 40px;
+      text-align: right;
     }
 
     /* ---------- Auto-stop control ---------- */
@@ -228,13 +258,11 @@
 
     .autostop-trigger {
       align-items: center;
-      gap: 6px;
-      padding: 5px 11px;
-      border-radius: 999px;
+      gap: 8px;
+      padding: 0 14px;
       background: transparent;
       border: 1px dashed var(--border-strong);
       color: var(--text-2);
-      font-size: 12px;
       font-weight: 600;
       font-family: inherit;
       cursor: pointer;
@@ -247,41 +275,40 @@
       background: color-mix(in srgb, var(--accent) 10%, transparent);
     }
 
-    .autostop-trigger svg { width: 13px; height: 13px; }
+    .autostop-trigger svg { width: var(--icon); height: var(--icon); flex-shrink: 0; }
 
     .autostop-editor {
       align-items: center;
-      gap: 7px;
-      padding: 5px 7px 5px 11px;
-      border-radius: 999px;
+      gap: 8px;
+      padding: 0 8px 0 14px;
       background: var(--surface-strong);
       border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
     }
 
     .ae-label {
-      font-size: 11.5px;
       font-weight: 600;
       color: var(--text-2);
       white-space: nowrap;
     }
 
     .ae-time {
-      width: 92px;
-      padding: 3px 6px;
+      width: 96px;
+      height: 26px;
+      padding: 0 8px;
       border-radius: 7px;
       border: 1px solid var(--border-strong);
       background: rgba(0, 0, 0, 0.28);
       color: var(--text);
       font-family: inherit;
-      font-size: 12.5px;
+      font-size: var(--chip-font);
       font-variant-numeric: tabular-nums;
       color-scheme: dark;
     }
 
     .ae-time:focus { outline: none; border-color: var(--accent); }
 
-    .ae-dash { color: var(--text-3); font-size: 12px; }
+    .ae-dash { color: var(--text-3); }
 
     .ae-set, .ae-cancel {
       border: none;
@@ -293,32 +320,32 @@
     }
 
     .ae-set {
-      padding: 5px 12px;
-      border-radius: 999px;
+      height: 26px;
+      padding: 0 14px;
+      border-radius: 8px;
       background: linear-gradient(180deg, var(--accent), var(--accent-deep));
       color: #04181d;
-      font-size: 12px;
+      font-size: var(--chip-font);
       font-weight: 700;
     }
 
     .ae-set:hover { filter: brightness(1.08); }
 
     .ae-cancel {
-      width: 24px;
-      height: 24px;
-      border-radius: 50%;
+      width: 26px;
+      height: 26px;
+      border-radius: 7px;
       background: transparent;
       color: var(--text-3);
     }
 
     .ae-cancel:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
-    .ae-cancel svg { width: 12px; height: 12px; }
+    .ae-cancel svg { width: 14px; height: 14px; }
 
     .autostop-active {
       align-items: center;
-      gap: 9px;
-      padding: 4px 6px 4px 11px;
-      border-radius: 999px;
+      gap: 10px;
+      padding: 0 8px 0 14px;
       background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 18%, transparent), color-mix(in srgb, var(--accent) 7%, transparent));
       border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
     }
@@ -326,8 +353,9 @@
     .aa-clock {
       display: inline-flex;
       color: var(--accent);
+      flex-shrink: 0;
     }
-    .aa-clock svg { width: 14px; height: 14px; }
+    .aa-clock svg { width: var(--icon); height: var(--icon); }
 
     .aa-main {
       display: inline-flex;
@@ -338,14 +366,12 @@
     }
 
     .aa-time {
-      font-size: 13px;
       font-weight: 700;
       color: var(--text);
       white-space: nowrap;
     }
 
     .aa-count {
-      font-size: 12px;
       font-weight: 650;
       color: var(--accent);
       font-variant-numeric: tabular-nums;
@@ -353,9 +379,9 @@
     }
 
     .aa-clear {
-      width: 24px;
-      height: 24px;
-      border-radius: 50%;
+      width: 26px;
+      height: 26px;
+      border-radius: 7px;
       border: none;
       background: transparent;
       color: var(--text-3);
@@ -366,13 +392,13 @@
       flex-shrink: 0;
     }
     .aa-clear:hover { background: rgba(0, 0, 0, 0.25); color: var(--danger); }
-    .aa-clear svg { width: 12px; height: 12px; }
+    .aa-clear svg { width: 14px; height: 14px; }
 
     /* ---------- Variables ---------- */
     .variables {
       display: none;
       align-items: center;
-      gap: 7px;
+      gap: 8px;
       flex-wrap: wrap;
     }
 
@@ -381,50 +407,52 @@
     .variable-pill {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 5px 9px;
-      border-radius: 999px;
+      gap: 9px;
+      padding: 0 13px;
       border: 1px solid var(--border);
       background: var(--surface);
       color: var(--text-2);
-      font-size: 12px;
+      font-weight: 600;
       line-height: 1;
       max-width: 100%;
       min-width: 0;
     }
 
-    .variable-content {
-      display: inline-flex;
-      flex-direction: column;
-      gap: 2px;
-      min-width: 0;
-    }
-
-    .variable-content > span:first-child {
-      max-width: 100%;
+    .variable-name {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      font-weight: 600;
+      min-width: 0;
     }
 
-    .variable-meta {
-      font-size: 10.5px;
+    .variable-elapsed {
       color: var(--text-3);
       font-variant-numeric: tabular-nums;
-      line-height: 1.2;
+      font-weight: 600;
+      flex-shrink: 0;
     }
 
     .variable-pill.active {
+      /* Active pills gain a reset button on the right, so tighten that side. */
+      padding: 0 5px 0 13px;
       background: color-mix(in srgb, var(--pill-color, #22d3ee) 18%, transparent);
       border-color: color-mix(in srgb, var(--pill-color, #22d3ee) 55%, transparent);
       color: var(--text);
       animation: pillPulse 1.2s ease-in-out infinite;
     }
 
+    .variable-pill.active .variable-elapsed {
+      color: color-mix(in srgb, var(--pill-color, #22d3ee) 65%, var(--text));
+    }
+
+    @keyframes pillPulse {
+      0%, 100% { box-shadow: 0 0 0 0 transparent; }
+      50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--pill-color, #22d3ee) 22%, transparent); }
+    }
+
     .variable-dot {
-      width: 9px;
-      height: 9px;
+      width: 10px;
+      height: 10px;
       border-radius: 50%;
       flex-shrink: 0;
       background: var(--pill-color, #22d3ee);
@@ -432,9 +460,9 @@
     }
 
     .variable-reset {
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
+      width: 26px;
+      height: 26px;
+      border-radius: 7px;
       border: 1px solid var(--border-strong);
       background: rgba(0, 0, 0, 0.22);
       color: inherit;
@@ -446,7 +474,7 @@
       flex-shrink: 0;
     }
     .variable-reset:hover { background: rgba(255, 255, 255, 0.12); }
-    .variable-reset svg { width: 11px; height: 11px; }
+    .variable-reset svg { width: 13px; height: 13px; }
 
     /* ---------- Actions ---------- */
     .actions {
@@ -454,29 +482,31 @@
       align-items: center;
       gap: 8px;
       flex-shrink: 0;
-      align-self: flex-start;
     }
 
     .divider {
       width: 1px;
-      height: 24px;
+      height: 28px;
       background: var(--border);
-      margin: 0 1px;
+      margin: 0 2px;
     }
 
     .btn {
-      width: 40px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
       height: 40px;
+      padding: 0 15px;
       border: 1px solid var(--border);
       background: var(--surface);
       color: var(--text-2);
       border-radius: 11px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 650;
+      letter-spacing: -0.01em;
       cursor: pointer;
       transition: transform 0.14s, background 0.14s, color 0.14s, border-color 0.14s, box-shadow 0.14s;
-      padding: 0;
     }
 
     .btn:hover {
@@ -488,7 +518,9 @@
 
     .btn:active { transform: translateY(0); }
 
+    .btn-ico { display: inline-flex; flex-shrink: 0; }
     .btn svg { width: 18px; height: 18px; }
+    .btn-label { line-height: 1; white-space: nowrap; }
 
     .btn-primary:hover {
       color: var(--accent);
@@ -555,10 +587,16 @@
 
     /* ---------- Responsive ---------- */
     @media (max-width: 600px) {
-      .bar { flex-direction: column; align-items: stretch; gap: 12px; }
+      .bar { flex-direction: column; align-items: stretch; justify-content: center; gap: 14px; }
       .status { display: none; }
-      .actions { justify-content: flex-end; }
-      .ae-time { width: 84px; }
+      /* Stack everything centered so a narrow window still reads cleanly. */
+      .info { max-width: none; align-items: center; text-align: center; }
+      .sub-row, .variables { justify-content: center; }
+      .actions { justify-content: center; }
+      .ae-time { width: 88px; }
+      /* Reclaim space: drop the labels back to icon-only buttons. */
+      .btn { padding: 0; width: 42px; justify-content: center; }
+      .btn-label { display: none; }
     }
   </style>
 </head>
@@ -616,15 +654,18 @@
     </div>
 
     <div class="actions">
-      <button class="btn btn-primary" id="btn-pause" title="Pause">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+      <button class="btn btn-primary" id="btn-pause" title="Pause execution">
+        <span class="btn-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></span>
+        <span class="btn-label">Pause</span>
       </button>
-      <button class="btn btn-danger" id="btn-stop" title="Stop">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
+      <button class="btn btn-danger" id="btn-stop" title="Stop execution">
+        <span class="btn-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg></span>
+        <span class="btn-label">Stop</span>
       </button>
       <div class="divider"></div>
-      <button class="btn" id="btn-expand" title="Show full window">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+      <button class="btn" id="btn-expand" title="Reopen the main app window">
+        <span class="btn-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></span>
+        <span class="btn-label">Open app</span>
       </button>
     </div>
 
@@ -670,6 +711,8 @@
     const waitTime = el('wait-time');
     const variablesEl = el('variables');
     const btnPause = el('btn-pause');
+    const btnPauseIco = btnPause.querySelector('.btn-ico');
+    const btnPauseLabel = btnPause.querySelector('.btn-label');
     const btnStop = el('btn-stop');
     const btnExpand = el('btn-expand');
     const wireDrain = el('wire-drain');
@@ -702,8 +745,9 @@
       isPaused = paused;
       bar.dataset.state = paused ? 'paused' : 'running';
       eyebrowText.textContent = paused ? 'Paused' : 'Running';
-      btnPause.innerHTML = paused ? resumeIcon : pauseIcon;
-      btnPause.title = paused ? 'Resume' : 'Pause';
+      if (btnPauseIco) btnPauseIco.innerHTML = paused ? resumeIcon : pauseIcon;
+      if (btnPauseLabel) btnPauseLabel.textContent = paused ? 'Resume' : 'Pause';
+      btnPause.title = paused ? 'Resume execution' : 'Pause execution';
     }
 
     /* ===================== Wait countdown ===================== */
@@ -831,13 +875,17 @@
       variablesEl.innerHTML = visible.map((v) => {
         const active = !!v.value;
         const safeName = escapeHtml(v.name || 'Variable');
-        const meta = active && v.triggeredAt
-          ? `<span class="variable-meta">Hit ${escapeHtml(formatTimestamp(v.triggeredAt))} · ${escapeHtml(formatTimeSince(v.triggeredAt))}</span>`
+        const elapsed = active && v.triggeredAt
+          ? `<span class="variable-elapsed">${escapeHtml(formatTimeSince(v.triggeredAt))}</span>`
           : '';
+        const title = active && v.triggeredAt
+          ? `Hit ${escapeHtml(formatTimestamp(v.triggeredAt))} · ${escapeHtml(formatTimeSince(v.triggeredAt))}`
+          : safeName;
         return `
-          <div class="variable-pill ${active ? 'active' : ''}" style="--pill-color:${escapeHtml(v.color || '#22d3ee')}">
+          <div class="variable-pill ${active ? 'active' : ''}" style="--pill-color:${escapeHtml(v.color || '#22d3ee')}" title="${title}">
             <span class="variable-dot"></span>
-            <span class="variable-content"><span>${safeName}</span>${meta}</span>
+            <span class="variable-name">${safeName}</span>
+            ${elapsed}
             ${active ? `
               <button class="variable-reset" data-variable-id="${escapeHtml(v.id)}" title="Reset ${safeName}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 3 3 9 9 9"/></svg>

@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "renderer-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [".claude/preview-server.cjs"],
+      "port": 5599
+    },
+    {
+      "name": "renderer-dev",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["-e", "setInterval(()=>{}, 100000)"],
+      "port": 5173
+    }
+  ]
+}

@@ -3016,7 +3016,9 @@ input[type="color"]::-webkit-color-swatch {
 
 .analytics-bar:hover { opacity: 1; }
 .analytics-bar.status-completed { background: linear-gradient(180deg, #34d399, #10b981); }
-.analytics-bar.status-stopped { background: linear-gradient(180deg, #fbbf24, #f59e0b); }
+.analytics-bar.status-running { background: linear-gradient(180deg, #38bdf8, #0ea5e9); }
+.analytics-bar.status-paused { background: linear-gradient(180deg, #fbbf24, #f59e0b); }
+.analytics-bar.status-stopped { background: linear-gradient(180deg, #34d399, #10b981); }
 .analytics-bar.status-error { background: linear-gradient(180deg, #f87171, #ef4444); }
 .analytics-bar.status-idle { background: rgba(148, 163, 200, 0.3); }
 
@@ -3113,7 +3115,9 @@ input[type="color"]::-webkit-color-swatch {
 }
 
 .analytics-status-dot.completed { background: var(--color-success); box-shadow: 0 0 8px rgba(16, 185, 129, 0.7); }
-.analytics-status-dot.stopped { background: var(--color-warning); box-shadow: 0 0 8px rgba(245, 158, 11, 0.6); }
+.analytics-status-dot.running { background: var(--color-info); box-shadow: 0 0 8px rgba(14, 165, 233, 0.65); }
+.analytics-status-dot.paused { background: var(--color-warning); box-shadow: 0 0 8px rgba(245, 158, 11, 0.6); }
+.analytics-status-dot.stopped { background: var(--color-success); box-shadow: 0 0 8px rgba(16, 185, 129, 0.7); }
 .analytics-status-dot.error { background: var(--color-error); box-shadow: 0 0 8px rgba(239, 68, 68, 0.6); }
 .analytics-status-dot.idle { background: var(--text-tertiary); }
 
@@ -3299,9 +3303,19 @@ button.analytics-table-row.active::before {
   color: var(--color-success);
 }
 
-.analytics-status.stopped {
+.analytics-status.running {
+  background: rgba(14, 165, 233, 0.13);
+  color: var(--color-info);
+}
+
+.analytics-status.paused {
   background: rgba(245, 158, 11, 0.14);
   color: var(--color-warning);
+}
+
+.analytics-status.stopped {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--color-success);
 }
 
 .analytics-status.error {
@@ -3363,7 +3377,9 @@ button.analytics-table-row.active::before {
 }
 
 .analytics-duration-bar span.status-completed { background: linear-gradient(90deg, #10b981, #34d399); }
-.analytics-duration-bar span.status-stopped { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.analytics-duration-bar span.status-running { background: linear-gradient(90deg, #0ea5e9, #38bdf8); }
+.analytics-duration-bar span.status-paused { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.analytics-duration-bar span.status-stopped { background: linear-gradient(90deg, #10b981, #34d399); }
 .analytics-duration-bar span.status-error { background: linear-gradient(90deg, #ef4444, #f87171); }
 .analytics-duration-bar span.status-idle { background: linear-gradient(90deg, var(--color-primary-600), var(--color-primary-400)); }
 

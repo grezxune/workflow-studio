@@ -13,10 +13,10 @@ import { getStorageService } from './storage';
 
 let floatingWindow = null;
 let mainWindow = null;
-const FLOATING_BAR_WIDTH = 860;
-const FLOATING_BAR_HEIGHT = 168;
-const FLOATING_BAR_MIN_WIDTH = 340;
-const FLOATING_BAR_MIN_HEIGHT = 150;
+const FLOATING_BAR_WIDTH = 900;
+const FLOATING_BAR_HEIGHT = 188;
+const FLOATING_BAR_MIN_WIDTH = 360;
+const FLOATING_BAR_MIN_HEIGHT = 172;
 let floatingBarBounds: any = null;
 let persistBoundsTimeout: any = null;
 
@@ -51,11 +51,14 @@ export function showFloatingBar(mainWin) {
     height: bounds.height,
     minWidth: FLOATING_BAR_MIN_WIDTH,
     minHeight: FLOATING_BAR_MIN_HEIGHT,
-    frame: true,
+    // Fully custom, frameless window: no native title bar or border, so the
+    // branded bar can fill the window all the way to every edge. Dragging is
+    // handled in the page via -webkit-app-region.
+    frame: false,
     transparent: false,
     title: 'Workflow Runner',
     autoHideMenuBar: true,
-    backgroundColor: '#18181b',
+    backgroundColor: '#0d111a',
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: true,

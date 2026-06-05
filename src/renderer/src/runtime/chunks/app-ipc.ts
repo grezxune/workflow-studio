@@ -6,19 +6,24 @@ function setupIPCListeners() {
   window.workflowAPI.onExecutionStarted((data) => {
     updateExecutionState('running');
     showExecutionOverlay(data.workflow);
+    const startTime = Date.now();
     currentExecution = {
       workflowName: data.workflow?.name || 'Unknown',
       workflowId: data.workflow?.id,
-      loops: data.totalLoops || 1,
+      loopsConfigured: data.totalLoops || 1,
       actions: data.workflow?.actions?.length || 0,
-      startTime: Date.now()
+      dryRun: !!data.dryRun,
+      startTime,
+      startedAt: new Date(startTime).toISOString()
     };
+    setAnalyticsLiveExecution(currentExecution, 'running');
   });
 
   window.workflowAPI.onExecutionCompleted((data) => {
     updateExecutionState('idle');
     hideExecutionOverlay();
     showToast('success', 'Complete', 'Workflow execution completed');
+    completeAnalyticsLiveExecution('completed');
     if (currentExecution) {
       addToExecutionHistory({
         ...currentExecution,
@@ -27,26 +32,30 @@ function setupIPCListeners() {
       });
       currentExecution = null;
     }
+    addToExecutionHistory();
   });
 
   window.workflowAPI.onExecutionStopped((data) => {
     updateExecutionState('idle');
     hideExecutionOverlay();
-    showToast('warning', 'Stopped', 'Workflow execution stopped');
+    showToast('success', 'Done', 'Workflow execution finished');
+    completeAnalyticsLiveExecution('completed');
     if (currentExecution) {
       addToExecutionHistory({
         ...currentExecution,
-        status: 'stopped',
+        status: 'completed',
         duration: Date.now() - currentExecution.startTime
       });
       currentExecution = null;
     }
+    addToExecutionHistory();
   });
 
   window.workflowAPI.onExecutionError((data) => {
     updateExecutionState('error');
     hideExecutionOverlay();
     showToast('error', 'Error', data.error || 'Execution failed');
+    completeAnalyticsLiveExecution('error', { error: data.error });
     if (currentExecution) {
       addToExecutionHistory({
         ...currentExecution,
@@ -56,22 +65,27 @@ function setupIPCListeners() {
       });
       currentExecution = null;
     }
+    addToExecutionHistory();
   });
 
   window.workflowAPI.onExecutionPaused(() => {
     updateExecutionState('paused');
+    updateAnalyticsLiveExecution({ status: 'paused' });
   });
 
   window.workflowAPI.onExecutionResumed(() => {
     updateExecutionState('running');
+    updateAnalyticsLiveExecution({ status: 'running' });
   });
 
   window.workflowAPI.onActionStarted((data) => {
     updateExecutionProgress(data);
+    updateAnalyticsLiveExecution({ actions: currentExecution?.actions || 0 });
   });
 
   window.workflowAPI.onLoopStarted((data) => {
     updateLoopProgress(data);
+    updateAnalyticsLiveExecution({ completedLoops: data.loop ?? data.currentLoop ?? null });
   });
 
   window.workflowAPI.onAudioPlay?.((data) => {
@@ -83,14 +97,16 @@ function setupIPCListeners() {
     updateExecutionState('idle');
     hideExecutionOverlay();
     showToast('warning', 'Emergency Stop', `Panic triggered: ${data.source}`);
+    completeAnalyticsLiveExecution('completed');
     if (currentExecution) {
       addToExecutionHistory({
         ...currentExecution,
-        status: 'stopped',
+        status: 'completed',
         duration: Date.now() - currentExecution.startTime
       });
       currentExecution = null;
     }
+    addToExecutionHistory();
   });
 
   // Auto-update events

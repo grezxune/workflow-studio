@@ -578,18 +578,23 @@ function setupIPCListeners() {
     window.workflowAPI.onExecutionStarted((data) => {
         updateExecutionState('running');
         showExecutionOverlay(data.workflow);
+        const startTime = Date.now();
         currentExecution = {
             workflowName: data.workflow?.name || 'Unknown',
             workflowId: data.workflow?.id,
-            loops: data.totalLoops || 1,
+            loopsConfigured: data.totalLoops || 1,
             actions: data.workflow?.actions?.length || 0,
-            startTime: Date.now()
+            dryRun: !!data.dryRun,
+            startTime,
+            startedAt: new Date(startTime).toISOString()
         };
+        setAnalyticsLiveExecution(currentExecution, 'running');
     });
     window.workflowAPI.onExecutionCompleted((data) => {
         updateExecutionState('idle');
         hideExecutionOverlay();
         showToast('success', 'Complete', 'Workflow execution completed');
+        completeAnalyticsLiveExecution('completed');
         if (currentExecution) {
             addToExecutionHistory({
                 ...currentExecution,
@@ -598,24 +603,28 @@ function setupIPCListeners() {
             });
             currentExecution = null;
         }
+        addToExecutionHistory();
     });
     window.workflowAPI.onExecutionStopped((data) => {
         updateExecutionState('idle');
         hideExecutionOverlay();
-        showToast('warning', 'Stopped', 'Workflow execution stopped');
+        showToast('success', 'Done', 'Workflow execution finished');
+        completeAnalyticsLiveExecution('completed');
         if (currentExecution) {
             addToExecutionHistory({
                 ...currentExecution,
-                status: 'stopped',
+                status: 'completed',
                 duration: Date.now() - currentExecution.startTime
             });
             currentExecution = null;
         }
+        addToExecutionHistory();
     });
     window.workflowAPI.onExecutionError((data) => {
         updateExecutionState('error');
         hideExecutionOverlay();
         showToast('error', 'Error', data.error || 'Execution failed');
+        completeAnalyticsLiveExecution('error', { error: data.error });
         if (currentExecution) {
             addToExecutionHistory({
                 ...currentExecution,
@@ -625,18 +634,23 @@ function setupIPCListeners() {
             });
             currentExecution = null;
         }
+        addToExecutionHistory();
     });
     window.workflowAPI.onExecutionPaused(() => {
         updateExecutionState('paused');
+        updateAnalyticsLiveExecution({ status: 'paused' });
     });
     window.workflowAPI.onExecutionResumed(() => {
         updateExecutionState('running');
+        updateAnalyticsLiveExecution({ status: 'running' });
     });
     window.workflowAPI.onActionStarted((data) => {
         updateExecutionProgress(data);
+        updateAnalyticsLiveExecution({ actions: currentExecution?.actions || 0 });
     });
     window.workflowAPI.onLoopStarted((data) => {
         updateLoopProgress(data);
+        updateAnalyticsLiveExecution({ completedLoops: data.loop ?? data.currentLoop ?? null });
     });
     window.workflowAPI.onAudioPlay?.((data) => {
         playWorkflowSound(data);
@@ -646,14 +660,16 @@ function setupIPCListeners() {
         updateExecutionState('idle');
         hideExecutionOverlay();
         showToast('warning', 'Emergency Stop', `Panic triggered: ${data.source}`);
+        completeAnalyticsLiveExecution('completed');
         if (currentExecution) {
             addToExecutionHistory({
                 ...currentExecution,
-                status: 'stopped',
+                status: 'completed',
                 duration: Date.now() - currentExecution.startTime
             });
             currentExecution = null;
         }
+        addToExecutionHistory();
     });
     // Auto-update events
     setupUpdateListeners();
@@ -1028,7 +1044,10 @@ function setupUpdateListeners() {
  */
 const analyticsState = {
     selectedWorkflowId: null,
-    isLoading: false
+    isLoading: false,
+    liveRun: null,
+    liveTicker: null,
+    renderTimer: null
 };
 const analyticsElements = {
     summaryGrid: null,
@@ -1068,12 +1087,14 @@ async function renderAnalyticsDashboard() {
     analyticsState.isLoading = true;
     setAnalyticsLoadingState(true);
     try {
-        const overall = await window.workflowAPI.getOverallAnalytics();
+        let overall = await window.workflowAPI.getOverallAnalytics();
+        overall = mergeLiveRunIntoOverall(overall);
         ensureSelectedWorkflow(overall);
         renderWorkflowSelect(overall);
-        const workflowAnalytics = analyticsState.selectedWorkflowId
+        let workflowAnalytics = analyticsState.selectedWorkflowId
             ? await window.workflowAPI.getWorkflowAnalytics(analyticsState.selectedWorkflowId)
             : null;
+        workflowAnalytics = mergeLiveRunIntoWorkflowAnalytics(workflowAnalytics);
         renderOverallSummary(overall);
         renderWorkflowPerformanceTable(overall);
         renderWorkflowDetail(workflowAnalytics);
@@ -1096,6 +1117,241 @@ function setAnalyticsLoadingState(loading) {
         analyticsElements.refreshButton.disabled = loading;
         analyticsElements.refreshButton.classList.toggle('checking', loading);
     }
+}
+function setAnalyticsLiveExecution(execution, status = 'running') {
+    if (!execution?.workflowId)
+        return;
+    const startedAtMs = Number(execution.startTime)
+        || +new Date(execution.startedAt || 0)
+        || Date.now();
+    analyticsState.liveRun = {
+        id: `live-${execution.workflowId}-${startedAtMs}`,
+        workflowId: execution.workflowId,
+        workflowName: execution.workflowName || execution.workflow?.name || 'Untitled Workflow',
+        status: normalizeAnalyticsStatus(status),
+        startedAt: new Date(startedAtMs).toISOString(),
+        startedAtMs,
+        endedAt: null,
+        durationMs: Math.max(0, Date.now() - startedAtMs),
+        loopsConfigured: execution.loopsConfigured ?? execution.loops ?? 1,
+        completedLoops: execution.completedLoops ?? null,
+        actions: Number(execution.actions) || 0,
+        dryRun: !!execution.dryRun,
+        error: execution.error || null,
+        isLive: true
+    };
+    startAnalyticsLiveTicker();
+    requestAnalyticsDashboardRefresh();
+}
+function updateAnalyticsLiveExecution(patch = {}) {
+    if (!analyticsState.liveRun)
+        return;
+    analyticsState.liveRun = {
+        ...analyticsState.liveRun,
+        ...patch,
+        status: normalizeAnalyticsStatus(patch.status || analyticsState.liveRun.status)
+    };
+    updateAnalyticsLiveDuration();
+    requestAnalyticsDashboardRefresh();
+}
+function completeAnalyticsLiveExecution(status = 'completed', patch = {}) {
+    if (!analyticsState.liveRun)
+        return;
+    const finalStatus = normalizeAnalyticsStatus(status);
+    const endedAtMs = Date.now();
+    analyticsState.liveRun = {
+        ...analyticsState.liveRun,
+        ...patch,
+        status: finalStatus,
+        endedAt: new Date(endedAtMs).toISOString(),
+        durationMs: Math.max(0, endedAtMs - analyticsState.liveRun.startedAtMs),
+        error: finalStatus === 'error' ? patch.error || analyticsState.liveRun.error || null : null
+    };
+    stopAnalyticsLiveTicker();
+    requestAnalyticsDashboardRefresh();
+    const liveId = analyticsState.liveRun.id;
+    setTimeout(() => {
+        if (analyticsState.liveRun?.id === liveId && isTerminalAnalyticsStatus(analyticsState.liveRun.status)) {
+            analyticsState.liveRun = null;
+            requestAnalyticsDashboardRefresh();
+        }
+    }, 5000);
+}
+function requestAnalyticsDashboardRefresh() {
+    if (state.currentView !== 'analytics')
+        return;
+    if (analyticsState.renderTimer)
+        return;
+    analyticsState.renderTimer = setTimeout(() => {
+        analyticsState.renderTimer = null;
+        renderAnalyticsDashboard();
+    }, 0);
+}
+function startAnalyticsLiveTicker() {
+    if (analyticsState.liveTicker)
+        return;
+    analyticsState.liveTicker = setInterval(() => {
+        if (!analyticsState.liveRun || isTerminalAnalyticsStatus(analyticsState.liveRun.status)) {
+            stopAnalyticsLiveTicker();
+            return;
+        }
+        updateAnalyticsLiveDuration();
+        requestAnalyticsDashboardRefresh();
+    }, 1000);
+}
+function stopAnalyticsLiveTicker() {
+    if (!analyticsState.liveTicker)
+        return;
+    clearInterval(analyticsState.liveTicker);
+    analyticsState.liveTicker = null;
+}
+function updateAnalyticsLiveDuration() {
+    if (!analyticsState.liveRun || analyticsState.liveRun.endedAt)
+        return;
+    analyticsState.liveRun.durationMs = Math.max(0, Date.now() - analyticsState.liveRun.startedAtMs);
+}
+function getCurrentAnalyticsLiveRun(overall) {
+    if (!analyticsState.liveRun)
+        return null;
+    updateAnalyticsLiveDuration();
+    if (isPersistedAnalyticsRunPresent(overall, analyticsState.liveRun)) {
+        analyticsState.liveRun = null;
+        stopAnalyticsLiveTicker();
+        return null;
+    }
+    return { ...analyticsState.liveRun };
+}
+function isPersistedAnalyticsRunPresent(overall, liveRun) {
+    if (!isTerminalAnalyticsStatus(liveRun?.status))
+        return false;
+    const runs = overall?.recentRuns || [];
+    return runs.some(run => {
+        const startedAtMs = +new Date(run.startedAt || 0);
+        return run.workflowId === liveRun.workflowId
+            && normalizeAnalyticsStatus(run.status) === liveRun.status
+            && Math.abs(startedAtMs - liveRun.startedAtMs) < 5000;
+    });
+}
+function mergeLiveRunIntoOverall(overall = {}) {
+    const liveRun = getCurrentAnalyticsLiveRun(overall);
+    if (!liveRun)
+        return overall || {};
+    const perWorkflow = [...(overall.perWorkflow || [])];
+    const existingIndex = perWorkflow.findIndex(item => item.workflowId === liveRun.workflowId);
+    if (existingIndex >= 0) {
+        perWorkflow[existingIndex] = {
+            ...perWorkflow[existingIndex],
+            summary: addAnalyticsRunToSummary(perWorkflow[existingIndex].summary, liveRun)
+        };
+    }
+    else {
+        perWorkflow.unshift({
+            workflowId: liveRun.workflowId,
+            workflowName: liveRun.workflowName,
+            summary: addAnalyticsRunToSummary(createEmptyAnalyticsSummary(), liveRun)
+        });
+    }
+    perWorkflow.sort((a, b) => (b.summary?.totalRuns || 0) - (a.summary?.totalRuns || 0));
+    return {
+        ...overall,
+        summary: addAnalyticsRunToSummary(overall.summary, liveRun),
+        workflowsRun: perWorkflow.length,
+        perWorkflow,
+        recentRuns: [liveRun, ...(overall.recentRuns || [])].slice(0, 25)
+    };
+}
+function mergeLiveRunIntoWorkflowAnalytics(workflowAnalytics) {
+    const liveRun = getCurrentAnalyticsLiveRun();
+    if (!liveRun || analyticsState.selectedWorkflowId !== liveRun.workflowId)
+        return workflowAnalytics;
+    const runs = workflowAnalytics?.runs || [];
+    const alreadyPersisted = runs.some(run => {
+        const startedAtMs = +new Date(run.startedAt || 0);
+        return run.workflowId === liveRun.workflowId
+            && normalizeAnalyticsStatus(run.status) === liveRun.status
+            && Math.abs(startedAtMs - liveRun.startedAtMs) < 5000;
+    });
+    if (alreadyPersisted)
+        return workflowAnalytics;
+    return {
+        workflow: workflowAnalytics?.workflow || (state.workflows || []).find(workflow => workflow.id === liveRun.workflowId) || null,
+        summary: addAnalyticsRunToSummary(workflowAnalytics?.summary, liveRun),
+        runs: [liveRun, ...runs]
+    };
+}
+function createEmptyAnalyticsSummary() {
+    return {
+        totalRuns: 0,
+        completedRuns: 0,
+        stoppedRuns: 0,
+        errorRuns: 0,
+        runningRuns: 0,
+        pausedRuns: 0,
+        dryRuns: 0,
+        successRate: 0,
+        totalDurationMs: 0,
+        averageDurationMs: 0,
+        shortestDurationMs: 0,
+        longestDurationMs: 0,
+        totalActions: 0,
+        averageActions: 0,
+        totalCompletedLoops: 0,
+        averageCompletedLoops: 0,
+        firstRunAt: null,
+        lastRunAt: null,
+        lastStatus: null
+    };
+}
+function addAnalyticsRunToSummary(summary = {}, run = {}) {
+    const base = { ...createEmptyAnalyticsSummary(), ...(summary || {}) };
+    const status = normalizeAnalyticsStatus(run.status);
+    const totalRuns = (Number(base.totalRuns) || 0) + 1;
+    const durationMs = Math.max(0, Number(run.durationMs) || 0);
+    const totalDurationMs = (Number(base.totalDurationMs) || 0) + durationMs;
+    const totalActions = (Number(base.totalActions) || 0) + (Number(run.actions) || 0);
+    const completedLoops = Number(run.completedLoops);
+    const totalCompletedLoops = (Number(base.totalCompletedLoops) || 0)
+        + (Number.isFinite(completedLoops) ? completedLoops : 0);
+    const previousShortest = Number(base.shortestDurationMs) || 0;
+    const firstRunAt = pickEarlierDate(base.firstRunAt, run.startedAt);
+    const lastRunAt = pickLaterDate(base.lastRunAt, run.startedAt);
+    const runIsLast = lastRunAt === run.startedAt || !base.lastRunAt;
+    return {
+        ...base,
+        totalRuns,
+        completedRuns: (Number(base.completedRuns) || 0) + (status === 'completed' ? 1 : 0),
+        stoppedRuns: 0,
+        errorRuns: (Number(base.errorRuns) || 0) + (status === 'error' ? 1 : 0),
+        runningRuns: (Number(base.runningRuns) || 0) + (status === 'running' ? 1 : 0),
+        pausedRuns: (Number(base.pausedRuns) || 0) + (status === 'paused' ? 1 : 0),
+        dryRuns: (Number(base.dryRuns) || 0) + (run.dryRun ? 1 : 0),
+        successRate: totalRuns ? ((Number(base.completedRuns) || 0) + (status === 'completed' ? 1 : 0)) / totalRuns : 0,
+        totalDurationMs,
+        averageDurationMs: totalRuns ? totalDurationMs / totalRuns : 0,
+        shortestDurationMs: previousShortest ? Math.min(previousShortest, durationMs) : durationMs,
+        longestDurationMs: Math.max(Number(base.longestDurationMs) || 0, durationMs),
+        totalActions,
+        averageActions: totalRuns ? totalActions / totalRuns : 0,
+        totalCompletedLoops,
+        averageCompletedLoops: totalRuns ? totalCompletedLoops / totalRuns : 0,
+        firstRunAt,
+        lastRunAt,
+        lastStatus: runIsLast ? status : normalizeAnalyticsStatus(base.lastStatus)
+    };
+}
+function pickEarlierDate(a, b) {
+    if (!a)
+        return b || null;
+    if (!b)
+        return a;
+    return +new Date(a) <= +new Date(b) ? a : b;
+}
+function pickLaterDate(a, b) {
+    if (!a)
+        return b || null;
+    if (!b)
+        return a;
+    return +new Date(a) >= +new Date(b) ? a : b;
 }
 function ensureSelectedWorkflow(overall) {
     const existingWorkflowIds = new Set((state.workflows || []).map(workflow => workflow.id));
@@ -1200,10 +1456,11 @@ function renderWorkflowPerformanceTable(overall) {
         const summary = item.summary || {};
         const active = item.workflowId === analyticsState.selectedWorkflowId;
         const rate = Number(summary.successRate) || 0;
+        const status = normalizeAnalyticsStatus(summary.lastStatus || 'idle');
         return `
         <button class="analytics-table-row workflow-performance-row ${active ? 'active' : ''}" data-workflow-id="${analyticsEscapeHtml(item.workflowId)}">
           <div class="analytics-table-primary">
-            <span class="analytics-status-dot ${analyticsEscapeHtml(summary.lastStatus || 'idle')}"></span>
+            <span class="analytics-status-dot ${analyticsEscapeHtml(status)}"></span>
             <span class="analytics-table-primary-text">${analyticsEscapeHtml(item.workflowName || 'Untitled Workflow')}</span>
           </div>
           <div class="analytics-num">${formatAnalyticsNumber(summary.totalRuns)}</div>
@@ -1234,12 +1491,17 @@ function renderWorkflowDetail(analytics) {
     const runs = analytics.runs || [];
     const workflowName = analytics.workflow?.name || runs[0]?.workflowName || 'Deleted Workflow';
     const maxDuration = Math.max(...runs.map(run => Number(run.durationMs) || 0), 1);
+    const lastStatus = normalizeAnalyticsStatus(summary.lastStatus || 'idle');
+    const activeRuns = (Number(summary.runningRuns) || 0) + (Number(summary.pausedRuns) || 0);
+    const completionMeta = activeRuns
+        ? `${formatAnalyticsNumber(activeRuns)} active, ${formatAnalyticsNumber(summary.errorRuns)} errors`
+        : `${formatAnalyticsNumber(summary.errorRuns)} errors`;
     analyticsElements.workflowDetail.innerHTML = `
     <div class="workflow-analytics-title">
       <h2>${analyticsEscapeHtml(workflowName)}</h2>
-      <span class="analytics-status ${analyticsEscapeHtml(summary.lastStatus || 'idle')}">
-        <span class="analytics-status-dot ${analyticsEscapeHtml(summary.lastStatus || 'idle')}"></span>
-        ${analyticsEscapeHtml(summary.lastStatus ? formatAnalyticsStatus(summary.lastStatus) : 'No runs')}
+      <span class="analytics-status ${analyticsEscapeHtml(lastStatus)}">
+        <span class="analytics-status-dot ${analyticsEscapeHtml(lastStatus)}"></span>
+        ${analyticsEscapeHtml(lastStatus ? formatAnalyticsStatus(lastStatus) : 'No runs')}
       </span>
     </div>
 
@@ -1274,7 +1536,7 @@ function renderWorkflowDetail(analytics) {
           <span class="analytics-metric-label">Completed</span>
         </div>
         <div class="analytics-metric-value">${formatAnalyticsNumber(summary.completedRuns)}</div>
-        <div class="analytics-metric-meta">${formatAnalyticsNumber(summary.stoppedRuns)} stopped, ${formatAnalyticsNumber(summary.errorRuns)} errors</div>
+        <div class="analytics-metric-meta">${analyticsEscapeHtml(completionMeta)}</div>
       </div>
     </div>
 
@@ -1282,16 +1544,21 @@ function renderWorkflowDetail(analytics) {
       <div class="analytics-duration-caption">Run durations</div>
       ${runs.length ? runs.slice(0, 12).map(run => `
         <div class="analytics-duration-row">
+          ${(() => {
+        const status = normalizeAnalyticsStatus(run.status);
+        return `
           <div class="analytics-duration-info">
             <span>${analyticsEscapeHtml(formatAnalyticsDate(run.startedAt))}</span>
-            <span class="analytics-status ${analyticsEscapeHtml(run.status)}">
-              <span class="analytics-status-dot ${analyticsEscapeHtml(run.status)}"></span>
-              ${analyticsEscapeHtml(formatAnalyticsStatus(run.status))}
+            <span class="analytics-status ${analyticsEscapeHtml(status)}">
+              <span class="analytics-status-dot ${analyticsEscapeHtml(status)}"></span>
+              ${analyticsEscapeHtml(formatAnalyticsStatus(status))}
             </span>
           </div>
           <div class="analytics-duration-bar">
-            <span class="status-${analyticsEscapeHtml(run.status || 'idle')}" style="width: ${Math.max(4, ((Number(run.durationMs) || 0) / maxDuration) * 100)}%"></span>
+            <span class="status-${analyticsEscapeHtml(status || 'idle')}" style="width: ${Math.max(4, ((Number(run.durationMs) || 0) / maxDuration) * 100)}%"></span>
           </div>
+            `;
+    })()}
           <div class="analytics-duration-value">${analyticsEscapeHtml(formatAnalyticsDuration(run.durationMs))}</div>
         </div>
       `).join('') : '<div class="analytics-empty">No runs recorded</div>'}
@@ -1314,8 +1581,13 @@ function renderRunLog(runs) {
       </div>
       ${runs.map(run => `
         <div class="analytics-table-row run-log-row">
+          ${(() => {
+        const status = normalizeAnalyticsStatus(run.status);
+        return `
           <div class="analytics-muted">${analyticsEscapeHtml(formatAnalyticsDate(run.startedAt))}</div>
-          <div><span class="analytics-status ${analyticsEscapeHtml(run.status)}"><span class="analytics-status-dot ${analyticsEscapeHtml(run.status)}"></span>${analyticsEscapeHtml(formatAnalyticsStatus(run.status))}</span></div>
+          <div><span class="analytics-status ${analyticsEscapeHtml(status)}"><span class="analytics-status-dot ${analyticsEscapeHtml(status)}"></span>${analyticsEscapeHtml(formatAnalyticsStatus(status))}</span></div>
+            `;
+    })()}
           <div class="analytics-num">${analyticsEscapeHtml(formatAnalyticsDuration(run.durationMs))}</div>
           <div class="analytics-num">${analyticsEscapeHtml(formatAnalyticsLoops(run))}</div>
           <div class="analytics-num">${formatAnalyticsNumber(run.actions || 0)}</div>
@@ -1338,11 +1610,16 @@ function renderRecentRuns(runs) {
     </div>
     ${runs.map(run => `
       <button class="analytics-table-row recent-run-row" data-workflow-id="${analyticsEscapeHtml(run.workflowId)}">
+        ${(() => {
+        const status = normalizeAnalyticsStatus(run.status || 'idle');
+        return `
         <div class="analytics-table-primary">
-          <span class="analytics-status-dot ${analyticsEscapeHtml(run.status || 'idle')}"></span>
+          <span class="analytics-status-dot ${analyticsEscapeHtml(status)}"></span>
           <span class="analytics-table-primary-text">${analyticsEscapeHtml(run.workflowName || 'Untitled Workflow')}</span>
         </div>
-        <div><span class="analytics-status ${analyticsEscapeHtml(run.status)}"><span class="analytics-status-dot ${analyticsEscapeHtml(run.status)}"></span>${analyticsEscapeHtml(formatAnalyticsStatus(run.status))}</span></div>
+        <div><span class="analytics-status ${analyticsEscapeHtml(status)}"><span class="analytics-status-dot ${analyticsEscapeHtml(status)}"></span>${analyticsEscapeHtml(formatAnalyticsStatus(status))}</span></div>
+          `;
+    })()}
         <div class="analytics-num">${analyticsEscapeHtml(formatAnalyticsDuration(run.durationMs))}</div>
         <div class="analytics-num analytics-muted">${analyticsEscapeHtml(formatAnalyticsDate(run.startedAt, true))}</div>
       </button>
@@ -1356,19 +1633,20 @@ function renderRecentRuns(runs) {
     });
 }
 /* ---------- Visualization helpers ---------- */
-// A multi-segment donut showing how runs ended: completed / stopped / error.
-// Replaces the old single "success rate" ring, which was ambiguous.
+// A multi-segment donut showing historical success plus live running/paused state.
 function renderOutcomeDonut(summary) {
     const total = Number(summary.totalRuns) || 0;
     const completed = Number(summary.completedRuns) || 0;
-    const stopped = Number(summary.stoppedRuns) || 0;
     const errored = Number(summary.errorRuns) || 0;
-    const other = Math.max(0, total - completed - stopped - errored);
+    const running = Number(summary.runningRuns) || 0;
+    const paused = Number(summary.pausedRuns) || 0;
+    const other = Math.max(0, total - completed - errored - running - paused);
     const completionPct = total ? Math.round((completed / total) * 100) : 0;
     // r chosen so circumference ≈ 100, letting stroke-dasharray act as a percentage.
     const segments = [
         { count: completed, color: '#34d399' },
-        { count: stopped, color: '#fbbf24' },
+        { count: running, color: '#38bdf8' },
+        { count: paused, color: '#fbbf24' },
         { count: errored, color: '#f87171' },
         { count: other, color: '#5b6478' }
     ].filter(seg => seg.count > 0);
@@ -1392,7 +1670,8 @@ function renderOutcomeDonut(summary) {
 function renderOutcomeLegend(summary) {
     const items = [
         { label: 'Completed', cls: 'completed', count: Number(summary.completedRuns) || 0 },
-        { label: 'Stopped', cls: 'stopped', count: Number(summary.stoppedRuns) || 0 },
+        { label: 'Running', cls: 'running', count: Number(summary.runningRuns) || 0 },
+        { label: 'Paused', cls: 'paused', count: Number(summary.pausedRuns) || 0 },
         { label: 'Error', cls: 'error', count: Number(summary.errorRuns) || 0 }
     ];
     return `
@@ -1416,7 +1695,7 @@ function renderActivityBars(runs) {
     const max = Math.max(...ordered.map(r => Number(r.durationMs) || 0), 1);
     const bars = ordered.map(run => {
         const h = Math.max(8, Math.round(((Number(run.durationMs) || 0) / max) * 100));
-        const status = run.status || 'idle';
+        const status = normalizeAnalyticsStatus(run.status || 'idle');
         const title = `${formatAnalyticsStatus(status)} · ${formatAnalyticsDuration(run.durationMs)}`;
         return `<span class="analytics-bar status-${analyticsEscapeHtml(status)}" style="height:${h}%" title="${analyticsEscapeHtml(title)}"></span>`;
     }).join('');
@@ -1483,13 +1762,25 @@ function formatAnalyticsDate(isoString, compact = false) {
     });
 }
 function formatAnalyticsStatus(status) {
+    const normalized = normalizeAnalyticsStatus(status);
     const labels = {
         completed: 'Completed',
-        stopped: 'Stopped',
+        stopped: 'Completed',
         error: 'Error',
+        running: 'Running',
+        paused: 'Paused',
         idle: 'No runs'
     };
-    return labels[status] || status || 'Unknown';
+    return labels[normalized] || normalized || 'Unknown';
+}
+function normalizeAnalyticsStatus(status) {
+    if (status === 'stopped')
+        return 'completed';
+    return status || 'idle';
+}
+function isTerminalAnalyticsStatus(status) {
+    const normalized = normalizeAnalyticsStatus(status);
+    return normalized === 'completed' || normalized === 'error';
 }
 function formatAnalyticsLoops(run) {
     const completed = run.completedLoops;
@@ -1950,7 +2241,10 @@ async function migrateLegacyExecutionHistory() {
  */
 function addToExecutionHistory() {
     renderRecentWorkflows();
-    if (typeof renderAnalyticsDashboard === 'function' && state.currentView === 'analytics') {
+    if (typeof requestAnalyticsDashboardRefresh === 'function') {
+        requestAnalyticsDashboardRefresh();
+    }
+    else if (typeof renderAnalyticsDashboard === 'function' && state.currentView === 'analytics') {
         renderAnalyticsDashboard();
     }
 }
@@ -3759,6 +4053,8 @@ async function runCurrentWorkflow(dryRun = false) {
  */
 async function stopExecution() {
     await window.workflowAPI.emergencyStop();
+    completeAnalyticsLiveExecution('completed');
+    addToExecutionHistory();
 }
 /**
  * Open config panel for action
@@ -7642,6 +7938,8 @@ function setPauseButtonState(paused) {
 async function stopExecution() {
     clearScheduledStop();
     await window.workflowAPI.emergencyStop();
+    completeAnalyticsLiveExecution('completed');
+    addToExecutionHistory();
     hideWaitCountdown();
     hideExecutionOverlay();
 }

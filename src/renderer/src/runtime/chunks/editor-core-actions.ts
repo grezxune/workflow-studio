@@ -200,6 +200,8 @@ async function runCurrentWorkflow(dryRun = false) {
  */
 async function stopExecution() {
   await window.workflowAPI.emergencyStop();
+  completeAnalyticsLiveExecution('completed');
+  addToExecutionHistory();
 }
 
 /**
