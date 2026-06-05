@@ -1,6 +1,6 @@
 {
   "name": "workflow-studio",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Premium workflow automation tool for gamers - automate repetitive tasks with human-like behavior",
   "type": "module",
   "main": "out/main/index.js",

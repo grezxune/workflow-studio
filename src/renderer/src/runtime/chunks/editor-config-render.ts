@@ -39,10 +39,10 @@ async function renderConfigFields(action, index, targetConfigBody, saveCallback)
       configBody.innerHTML = nameFieldHtml + `
         <div class="config-field">
           <label>Move Mode</label>
-          <div class="toggle-group">
-            <button class="toggle-btn ${action.moveMode === 'point' ? 'active' : ''}" data-mode="point">Point</button>
-            <button class="toggle-btn ${action.moveMode === 'bounds' ? 'active' : ''}" data-mode="bounds">Bounding Box</button>
-            <button class="toggle-btn ${action.moveMode === 'image' ? 'active' : ''}" data-mode="image">Image</button>
+          <div class="segmented-control">
+            <button class="segment ${action.moveMode === 'point' ? 'active' : ''}" data-mode="point">Point</button>
+            <button class="segment ${action.moveMode === 'bounds' ? 'active' : ''}" data-mode="bounds">Bounding Box</button>
+            <button class="segment ${action.moveMode === 'image' ? 'active' : ''}" data-mode="image">Image</button>
           </div>
           <p class="config-field-hint">${modeHints[action.moveMode]}</p>
         </div>
@@ -179,7 +179,7 @@ async function renderConfigFields(action, index, targetConfigBody, saveCallback)
       setupName();
 
       // Mode toggle
-      configBody.querySelectorAll('.toggle-btn').forEach(btn => {
+      configBody.querySelectorAll('.segment').forEach(btn => {
         btn.addEventListener('click', () => {
           action.moveMode = btn.dataset.mode;
           save();

@@ -19,9 +19,9 @@ async function renderImageDetectConfig(configBody, action, index, nameFieldHtml 
   configBody.innerHTML = nameFieldHtml + `
     <div class="config-field">
       <label>Detection Mode</label>
-      <div class="toggle-group">
-        <button class="toggle-btn ${!isAbsent ? 'active' : ''}" data-detect-mode="present">Find Image</button>
-        <button class="toggle-btn ${isAbsent ? 'active' : ''}" data-detect-mode="absent">Find Missing Image</button>
+      <div class="segmented-control">
+        <button class="segment ${!isAbsent ? 'active' : ''}" data-detect-mode="present">Find Image</button>
+        <button class="segment ${isAbsent ? 'active' : ''}" data-detect-mode="absent">Find Missing Image</button>
       </div>
       <p class="config-field-hint">${modeHints[action.detectMode]}</p>
     </div>
