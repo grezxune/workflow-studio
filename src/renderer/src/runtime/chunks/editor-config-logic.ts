@@ -1,39 +1,38 @@
+/* Editor config — conditional + loop actions (ported from WIP). Shares the editor global scope. */
+
 async function renderConditionalConfig(configBody, action, index, nameFieldHtml = '', save) {
   if (!save) save = () => updateAction(index, action);
-  action.condition = action.condition || { type: 'image_present' };
+  action.condition = normalizeConditionalBranchCondition(action.condition);
+  action.elseCondition = normalizeConditionalBranchCondition(action.elseCondition);
+  action.useElseCondition = !!action.useElseCondition;
+  action.waitUntilEitherCondition = !!action.waitUntilEitherCondition;
+  action.pollInterval = Math.max(100, parseInt(action.pollInterval, 10) || 500);
   action.thenActions = action.thenActions || [];
   action.elseActions = action.elseActions || [];
 
   configBody.innerHTML = nameFieldHtml + `
+    ${renderConditionalConditionFields('config-condition', 'If condition', action.condition)}
     <div class="config-field">
-      <label>Condition Type</label>
-      <select id="config-condition-type">
-        <option value="image_present" ${action.condition.type === 'image_present' ? 'selected' : ''}>Image Present</option>
-        <option value="image_absent" ${action.condition.type === 'image_absent' ? 'selected' : ''}>Image Absent</option>
-        <option value="pixel_match" ${action.condition.type === 'pixel_match' ? 'selected' : ''}>Pixel Color Match</option>
-      </select>
+      <label class="checkbox-label">
+        <input type="checkbox" id="config-use-else-condition" ${action.useElseCondition ? 'checked' : ''}>
+        Use a separate else condition
+      </label>
+      <p class="config-field-hint">Lets the else branch watch for its own image or pixel instead of firing whenever the if condition is false.</p>
     </div>
-    <div class="config-field" id="cond-image-field" ${action.condition.type === 'pixel_match' ? 'style="display:none"' : ''}>
-      <label>Image Template</label>
-      <div id="config-condition-image"></div>
-      <button class="btn btn-secondary btn-sm" id="btn-capture-cond-image" style="margin-top:8px">
-        Capture New Image
-      </button>
-    </div>
-    <div class="config-field" id="cond-confidence-field" ${action.condition.type === 'pixel_match' ? 'style="display:none"' : ''}>
-      <label>Match Confidence: <span id="cond-conf-value">${Math.round((action.condition.confidence || 0.9) * 100)}%</span></label>
-      <input type="range" id="config-condition-confidence" min="50" max="100" value="${Math.round((action.condition.confidence || 0.9) * 100)}">
-    </div>
-    <div class="config-field" id="cond-pixel-field" ${action.condition.type !== 'pixel_match' ? 'style="display:none"' : ''}>
-      <label>Pixel Color</label>
-      <div class="color-picker-row">
-        <input type="color" id="config-condition-color" value="${rgbToHex(action.condition.color)}">
-        <span id="cond-color-preview" style="display:inline-block;width:24px;height:24px;border-radius:4px;background:${rgbToHex(action.condition.color)};border:1px solid var(--border)"></span>
+    <div id="else-condition-section" ${!action.useElseCondition ? 'style="display:none"' : ''}>
+      ${renderConditionalConditionFields('config-else-condition', 'Else condition', action.elseCondition)}
+      <div class="config-field">
+        <label class="checkbox-label">
+          <input type="checkbox" id="config-wait-until-either" ${action.waitUntilEitherCondition ? 'checked' : ''}>
+          Keep checking until either branch matches
+        </label>
+        <p class="config-field-hint">Best for looping between two image checks. If both match on the same pass, the Then branch wins.</p>
       </div>
-    </div>
-    <div class="config-field" id="cond-tolerance-field" ${action.condition.type !== 'pixel_match' ? 'style="display:none"' : ''}>
-      <label>Color Tolerance: <span id="cond-tol-value">${action.condition.tolerance || 10}</span></label>
-      <input type="range" id="config-condition-tolerance" min="0" max="50" value="${action.condition.tolerance || 10}">
+      <div class="config-field" id="conditional-poll-interval-field" ${!action.waitUntilEitherCondition ? 'style="display:none"' : ''}>
+        <label>Check interval</label>
+        ${durationFieldHTML({ id: 'config-conditional-poll-interval', valueMs: action.pollInterval ?? '', placeholder: '500' })}
+        <p class="config-field-hint">How often to re-check both conditions while waiting.</p>
+      </div>
     </div>
     <div class="config-section">
       <div class="config-section-header">
@@ -43,7 +42,7 @@ async function renderConditionalConfig(configBody, action, index, nameFieldHtml 
     </div>
     <div class="config-section">
       <div class="config-section-header">
-        <span>Else (if false): <span id="else-actions-count">${action.elseActions.length}</span> actions</span>
+        <span>${action.useElseCondition ? 'Else (if else condition matches)' : 'Else (if false)'}: <span id="else-actions-count">${action.elseActions.length}</span> actions</span>
         <button class="btn btn-secondary btn-sm" id="btn-edit-else">Edit</button>
       </div>
     </div>
@@ -55,11 +54,10 @@ async function renderConditionalConfig(configBody, action, index, nameFieldHtml 
     </div>
   `;
 
-  // Load images for dropdown
-  const condImagePicker = await loadImageOptions('config-condition-image', action.condition.imageId, (val) => {
-    action.condition.imageId = val;
-    save();
-  });
+  await bindConditionalConditionEditor('config-condition', action.condition, save);
+  if (action.useElseCondition) {
+    await bindConditionalConditionEditor('config-else-condition', action.elseCondition, save);
+  }
 
   const nameInput = document.getElementById('config-action-name');
   if (nameInput) {
@@ -69,42 +67,25 @@ async function renderConditionalConfig(configBody, action, index, nameFieldHtml 
     });
   }
 
-  document.getElementById('config-condition-type').addEventListener('change', (e) => {
-    action.condition.type = e.target.value;
-    const isPixel = e.target.value === 'pixel_match';
-    document.getElementById('cond-image-field').style.display = isPixel ? 'none' : '';
-    document.getElementById('cond-confidence-field').style.display = isPixel ? 'none' : '';
-    document.getElementById('cond-pixel-field').style.display = isPixel ? '' : 'none';
-    document.getElementById('cond-tolerance-field').style.display = isPixel ? '' : 'none';
+  document.getElementById('config-use-else-condition').addEventListener('change', (e) => {
+    action.useElseCondition = e.target.checked;
+    if (!action.useElseCondition) {
+      action.waitUntilEitherCondition = false;
+    }
+    save();
+    renderConditionalConfig(configBody, action, index, nameFieldHtml, save);
+  });
+
+  document.getElementById('config-wait-until-either')?.addEventListener('change', (e) => {
+    action.waitUntilEitherCondition = e.target.checked;
+    document.getElementById('conditional-poll-interval-field').style.display = e.target.checked ? '' : 'none';
     save();
   });
 
-  document.getElementById('config-condition-confidence').addEventListener('input', (e) => {
-    const val = parseInt(e.target.value);
-    document.getElementById('cond-conf-value').textContent = val + '%';
-    action.condition.confidence = val / 100;
+  document.getElementById('config-conditional-poll-interval')?.addEventListener('change', () => {
+    const ms = readDurationMs('config-conditional-poll-interval');
+    action.pollInterval = Math.max(100, Math.min(30000, ms ?? 500));
     save();
-  });
-
-  document.getElementById('config-condition-color').addEventListener('change', (e) => {
-    action.condition.color = hexToRgb(e.target.value);
-    document.getElementById('cond-color-preview').style.background = e.target.value;
-    save();
-  });
-
-  document.getElementById('config-condition-tolerance').addEventListener('input', (e) => {
-    const val = parseInt(e.target.value);
-    document.getElementById('cond-tol-value').textContent = val;
-    action.condition.tolerance = val;
-    save();
-  });
-
-  document.getElementById('btn-capture-cond-image').addEventListener('click', () => {
-    captureImageTemplate((imageId) => {
-      action.condition.imageId = imageId;
-      if (condImagePicker) { condImagePicker.setValue(imageId); condImagePicker.refresh(); }
-      save();
-    });
   });
 
   document.getElementById('btn-edit-then').addEventListener('click', () => {
@@ -142,12 +123,8 @@ function renderLoopConfig(configBody, action, index, nameFieldHtml = '', save) {
       <input type="number" id="config-loop-count" min="1" max="10000" value="${action.count || 3}">
     </div>
     <div class="config-field">
-      <label>Delay Between Iterations (ms)</label>
-      <div class="range-inputs">
-        <input type="number" id="config-loop-delay-min" min="0" max="60000" value="${action.delay.min || 500}">
-        <span>to</span>
-        <input type="number" id="config-loop-delay-max" min="0" max="60000" value="${action.delay.max || 1000}">
-      </div>
+      <label>Delay Between Iterations</label>
+      ${durationRangeFieldHTML({ minId: 'config-loop-delay-min', maxId: 'config-loop-delay-max', minMs: action.delay.min || 500, maxMs: action.delay.max || 1000 })}
     </div>
     <div class="config-section">
       <div class="config-section-header">
@@ -183,13 +160,13 @@ function renderLoopConfig(configBody, action, index, nameFieldHtml = '', save) {
     save();
   });
 
-  document.getElementById('config-loop-delay-min').addEventListener('change', (e) => {
-    action.delay.min = parseInt(e.target.value) || 500;
+  document.getElementById('config-loop-delay-min').addEventListener('change', () => {
+    action.delay.min = readDurationMs('config-loop-delay-min') ?? 500;
     save();
   });
 
-  document.getElementById('config-loop-delay-max').addEventListener('change', (e) => {
-    action.delay.max = parseInt(e.target.value) || 1000;
+  document.getElementById('config-loop-delay-max').addEventListener('change', () => {
+    action.delay.max = readDurationMs('config-loop-delay-max') ?? 1000;
     save();
   });
 

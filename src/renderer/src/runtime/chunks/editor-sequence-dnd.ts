@@ -60,6 +60,7 @@ function getCompactLabel(action) {
  * Get a summary string for an action
  */
 function getActionSummary(action) {
+  const variableSuffix = getActionVariableSuffix(action);
   switch (action.type) {
     case 'mouse_move':
       if (action.moveMode === 'image' && action.imageId) {
@@ -88,17 +89,26 @@ function getActionSummary(action) {
       if (action.duration) {
         const min = action.duration.min || action.duration;
         const max = action.duration.max || action.duration;
-        return min === max ? `Wait ${min}ms` : `Wait ${min}-${max}ms`;
+        return `${min === max ? `Wait ${min}ms` : `Wait ${min}-${max}ms`}${variableSuffix}`;
       }
-      return 'Wait for condition';
+      return `Wait for condition${variableSuffix}`;
     case 'conditional':
-      return action.condition?.type || 'If condition';
+      if (action.useElseCondition) {
+        return `${action.waitUntilEitherCondition ? 'Wait for either condition' : 'Check two conditions'}${variableSuffix}`;
+      }
+      return `${action.condition?.type || 'If condition'}${variableSuffix}`;
     case 'loop':
       return action.infinite ? 'Repeat forever' : `Repeat ${action.count || 1} times`;
-    case 'image_detect':
-      return action.imageId ? 'Find saved image' : 'Find image';
+    case 'image_detect': {
+      const absent = action.detectMode === 'absent';
+      const verb = absent ? 'Detect missing image' : 'Find image';
+      const imgText = action.imageId ? (absent ? 'Detect missing saved image' : 'Find saved image') : verb;
+      return (action.soundId && action.soundId !== 'none'
+        ? `${imgText} + ${action.soundId === 'tts' ? 'speech' : 'sound'}`
+        : imgText) + variableSuffix;
+    }
     case 'pixel_detect':
-      return action.color ? `Find color #${action.color.r.toString(16)}${action.color.g.toString(16)}${action.color.b.toString(16)}` : 'Find pixel color';
+      return `${action.color ? `Find color #${action.color.r.toString(16)}${action.color.g.toString(16)}${action.color.b.toString(16)}` : 'Find pixel color'}${variableSuffix}`;
     default:
       return '';
   }

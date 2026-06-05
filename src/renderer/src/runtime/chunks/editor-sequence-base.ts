@@ -2,6 +2,7 @@
  * Load a workflow into the editor
  */
 function loadWorkflowIntoEditor(workflow) {
+  normalizeWorkflowVariables(workflow);
   state.currentWorkflow = workflow;
   editorState.selectedActionIndex = -1;
   editorState.isDirty = false;
@@ -11,8 +12,9 @@ function loadWorkflowIntoEditor(workflow) {
   loopInfiniteInput.checked = !!workflow.infiniteLoop;
   loopCountInput.value = workflow.loopCount || 1;
   loopCountInput.disabled = !!workflow.infiniteLoop;
-  loopDelayMinInput.value = workflow.loopDelay?.min || 500;
-  loopDelayMaxInput.value = workflow.loopDelay?.max || 1000;
+  setDurationRangeMs('loop-delay-min', 'loop-delay-max', workflow.loopDelay?.min ?? 500, workflow.loopDelay?.max ?? 1000);
+
+  updateVariablesBadge();
 
   // Render action sequence
   renderActionSequence();
@@ -33,7 +35,8 @@ function renderActionSequence() {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M12 5v14M5 12h14"/>
         </svg>
-        <p>Drag actions here to build your workflow</p>
+        <p>Drag an action from the left to start building</p>
+        <span class="empty-sequence-hint">or double-click any action · then press the green Run button</span>
       </div>
     `;
     return;

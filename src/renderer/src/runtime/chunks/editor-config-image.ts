@@ -1,6 +1,30 @@
+/* Editor config — image-detect action (ported from WIP). Shares the editor global scope. */
+
 async function renderImageDetectConfig(configBody, action, index, nameFieldHtml = '', save) {
   if (!save) save = () => updateAction(index, action);
+  action.detectMode = action.detectMode || 'present';
+  action.soundId = action.soundId || 'none';
+  action.soundVolume = action.soundVolume || 100;
+  action.soundRepeatCount = action.soundRepeatCount || 1;
+  action.speechText = action.speechText || '';
+  const selectedSoundMeta = getSoundMeta(action.soundId);
+  const isSpeechSound = action.soundId === 'tts';
+  const isCustomSound = selectedSoundMeta?.type === 'custom';
+  const isAbsent = action.detectMode === 'absent';
+  const detectLabel = isAbsent ? 'missing' : 'found';
+  const modeHints = {
+    present: 'Succeeds when the image appears on screen',
+    absent: 'Succeeds when the image is NOT on screen (detect when something disappears)'
+  };
   configBody.innerHTML = nameFieldHtml + `
+    <div class="config-field">
+      <label>Detection Mode</label>
+      <div class="toggle-group">
+        <button class="toggle-btn ${!isAbsent ? 'active' : ''}" data-detect-mode="present">Find Image</button>
+        <button class="toggle-btn ${isAbsent ? 'active' : ''}" data-detect-mode="absent">Find Missing Image</button>
+      </div>
+      <p class="config-field-hint">${modeHints[action.detectMode]}</p>
+    </div>
     <div class="config-field">
       <label>Image Template</label>
       <div id="config-image-id"></div>
@@ -25,15 +49,44 @@ async function renderImageDetectConfig(configBody, action, index, nameFieldHtml 
       <p class="config-field-hint">Higher values require closer match</p>
     </div>
     <div class="config-field">
+      <label>Sound When ${isAbsent ? 'Image Missing' : 'Image Found'}</label>
+      <div class="input-group">
+        <select id="config-image-found-sound">
+          ${renderSoundOptions(action.soundId)}
+        </select>
+        <button class="btn btn-secondary" id="btn-test-image-sound" ${action.soundId === 'none' ? 'disabled' : ''}>
+          Test
+        </button>
+        <button class="btn btn-secondary" id="btn-import-custom-sound">Import</button>
+        <button class="btn btn-danger" id="btn-delete-custom-sound" ${isCustomSound ? '' : 'disabled'}>Delete</button>
+      </div>
+      <p class="config-field-hint">Choose a built-in alert, import your own audio file, or speak custom text aloud.</p>
+    </div>
+    <div class="config-field" id="speech-text-field" ${isSpeechSound ? '' : 'style="display:none"'}>
+      <label>Speech Text</label>
+      <textarea id="config-speech-text" rows="3" placeholder="Boss spawned. Check the screen now.">${escapeHtml(action.speechText)}</textarea>
+      <p class="config-field-hint">This text will be spoken aloud when the image is ${detectLabel}.</p>
+    </div>
+    <div class="config-field">
+      <label>Sound Volume: <span id="sound-volume-value">${action.soundVolume}%</span></label>
+      <input type="range" id="config-image-sound-volume" min="25" max="500" value="${action.soundVolume}">
+      <p class="config-field-hint">100% is normal volume. Higher values push the alert much harder.</p>
+    </div>
+    <div class="config-field">
+      <label>Repeat Sound</label>
+      <input type="number" id="config-image-sound-repeat-count" min="1" max="10" value="${action.soundRepeatCount}">
+      <p class="config-field-hint">How many times the sound should play when this image is ${detectLabel}.</p>
+    </div>
+    <div class="config-field">
       <label class="checkbox-label">
         <input type="checkbox" id="config-wait-until-found" ${action.waitUntilFound ? 'checked' : ''}>
-        Wait until found
+        Wait until ${isAbsent ? 'missing' : 'found'}
       </label>
-      <p class="config-field-hint">Keep checking until the image appears on screen</p>
+      <p class="config-field-hint">${isAbsent ? 'Keep checking until the image disappears from screen' : 'Keep checking until the image appears on screen'}</p>
     </div>
     <div class="config-field" id="poll-interval-field" ${!action.waitUntilFound ? 'style="display:none"' : ''}>
-      <label>Check interval (ms)</label>
-      <input type="number" id="config-poll-interval" min="100" max="30000" value="${action.pollInterval || 500}" placeholder="500">
+      <label>Check interval</label>
+      ${durationFieldHTML({ id: 'config-poll-interval', valueMs: action.pollInterval || 500, placeholder: '500' })}
       <p class="config-field-hint">How often to re-check for the image</p>
     </div>
     <div class="config-field">
@@ -83,8 +136,9 @@ async function renderImageDetectConfig(configBody, action, index, nameFieldHtml 
     <div class="config-field">
       <label class="checkbox-label">
         <input type="checkbox" id="config-fail-not-found" ${action.failOnNotFound ? 'checked' : ''} ${action.waitUntilFound ? 'disabled' : ''}>
-        Fail if not found
+        Fail if ${isAbsent ? 'still present' : 'not found'}
       </label>
+      <p class="config-field-hint">${isAbsent ? 'Stop the workflow if the image is still on screen' : 'Stop the workflow if the image cannot be found'}</p>
     </div>
     <div class="config-field">
       <label class="checkbox-label">
@@ -92,6 +146,7 @@ async function renderImageDetectConfig(configBody, action, index, nameFieldHtml 
         Continue on error
       </label>
     </div>
+    ${renderVariableAssignmentField(action, isAbsent ? 'When image is missing' : 'When image is found')}
   `;
 
   // Load images for dropdown
@@ -108,6 +163,16 @@ async function renderImageDetectConfig(configBody, action, index, nameFieldHtml 
       save();
     });
   }
+  bindVariableAssignmentField(action, save);
+
+  // Detection mode toggle (present vs absent)
+  configBody.querySelectorAll('[data-detect-mode]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      action.detectMode = btn.dataset.detectMode;
+      save();
+      renderImageDetectConfig(configBody, action, index, nameFieldHtml, save);
+    });
+  });
 
   document.getElementById('btn-capture-image').addEventListener('click', () => {
     captureImageTemplate((imageId) => {
@@ -125,6 +190,77 @@ async function renderImageDetectConfig(configBody, action, index, nameFieldHtml 
     save();
   });
 
+  document.getElementById('config-image-found-sound').addEventListener('change', (e) => {
+    action.soundId = e.target.value;
+    const soundMeta = getSoundMeta(action.soundId);
+    const speechField = document.getElementById('speech-text-field');
+    document.getElementById('btn-test-image-sound').disabled = e.target.value === 'none';
+    document.getElementById('btn-delete-custom-sound').disabled = soundMeta?.type !== 'custom';
+    if (speechField) speechField.style.display = action.soundId === 'tts' ? '' : 'none';
+    save();
+  });
+
+  document.getElementById('config-speech-text')?.addEventListener('input', (e) => {
+    action.speechText = e.target.value;
+    save();
+  });
+
+  document.getElementById('config-image-sound-volume').addEventListener('input', (e) => {
+    const value = Math.max(25, Math.min(500, parseInt(e.target.value) || 100));
+    action.soundVolume = value;
+    document.getElementById('sound-volume-value').textContent = `${value}%`;
+    save();
+  });
+
+  document.getElementById('config-image-sound-repeat-count').addEventListener('change', (e) => {
+    const value = Math.max(1, Math.min(10, parseInt(e.target.value) || 1));
+    action.soundRepeatCount = value;
+    e.target.value = value;
+    save();
+  });
+
+  document.getElementById('btn-test-image-sound').addEventListener('click', async () => {
+    if (!action.soundId || action.soundId === 'none') return;
+    if (typeof window.playWorkflowSound === 'function') {
+      window.playWorkflowSound({
+        soundId: action.soundId,
+        volume: action.soundVolume || 100,
+        repeatCount: action.soundRepeatCount || 1,
+        speechText: action.speechText || ''
+      });
+    }
+  });
+
+  document.getElementById('btn-import-custom-sound').addEventListener('click', async () => {
+    try {
+      const imported = await window.workflowAPI.importCustomSound?.();
+      if (!imported?.id) return;
+      await loadSystemSounds();
+      action.soundId = imported.id;
+      save();
+      renderConfigFields(action, index, configBody, save);
+      showToast('success', 'Custom Sound Imported', `"${imported.label}" is ready to use.`);
+    } catch (error) {
+      console.error('Failed to import custom sound:', error);
+      showToast('error', 'Error', error.message || 'Failed to import custom sound');
+    }
+  });
+
+  document.getElementById('btn-delete-custom-sound').addEventListener('click', async () => {
+    if (getSoundMeta(action.soundId)?.type !== 'custom') return;
+    try {
+      await window.workflowAPI.deleteCustomSound?.(action.soundId);
+      action.soundId = 'none';
+      save();
+      await loadSystemSounds();
+      renderConfigFields(action, index, configBody, save);
+      showToast('success', 'Deleted', 'Custom sound removed');
+    } catch (error) {
+      console.error('Failed to delete custom sound:', error);
+      showToast('error', 'Error', error.message || 'Failed to delete custom sound');
+    }
+  });
+
   document.getElementById('config-wait-until-found').addEventListener('change', (e) => {
     action.waitUntilFound = e.target.checked;
     const pollField = document.getElementById('poll-interval-field');
@@ -138,8 +274,8 @@ async function renderImageDetectConfig(configBody, action, index, nameFieldHtml 
     save();
   });
 
-  document.getElementById('config-poll-interval').addEventListener('change', (e) => {
-    action.pollInterval = Math.max(100, parseInt(e.target.value) || 500);
+  document.getElementById('config-poll-interval').addEventListener('change', () => {
+    action.pollInterval = Math.max(100, readDurationMs('config-poll-interval') ?? 500);
     save();
   });
 
@@ -200,3 +336,6 @@ async function renderImageDetectConfig(configBody, action, index, nameFieldHtml 
   }
 }
 
+/**
+ * Render Pixel Detect action config
+ */

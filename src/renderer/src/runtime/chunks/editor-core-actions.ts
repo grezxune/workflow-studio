@@ -30,9 +30,18 @@ function createDefaultAction(type) {
     mouse_click: { type, button: 'left', clickType: 'single' },
     keyboard: { type, mode: 'type', text: '', actions: [] },
     wait: { type, duration: { min: 500, max: 1000 } },
-    conditional: { type, condition: { type: 'image_present' }, thenActions: [], elseActions: [] },
+    conditional: {
+      type,
+      condition: { type: 'image_present' },
+      elseCondition: { type: 'image_present' },
+      useElseCondition: false,
+      waitUntilEitherCondition: false,
+      pollInterval: 500,
+      thenActions: [],
+      elseActions: []
+    },
     loop: { type, count: 3, actions: [], delay: { min: 500, max: 1000 } },
-    image_detect: { type, imageId: null, confidence: 0.9 },
+    image_detect: { type, detectMode: 'present', imageId: null, confidence: 0.9, soundId: 'none', soundVolume: 100, soundRepeatCount: 1, speechText: '' },
     pixel_detect: { type, color: { r: 255, g: 0, b: 0 }, tolerance: 10 }
   };
 

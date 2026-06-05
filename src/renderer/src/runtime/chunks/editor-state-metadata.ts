@@ -56,7 +56,8 @@ let editorState = {
   isAIGenerating: false,
   templates: [],
   selectedActionIndices: [], // For multi-select when saving templates
-  compactView: false
+  compactView: false,
+  systemSounds: [{ id: 'none', label: 'No sound' }]
 };
 
 // DOM references
@@ -79,6 +80,8 @@ let aiPromptInput = null;
 let aiGenerateBtn = null;
 let aiComposerMeta = null;
 let aiContextPill = null;
+let workflowVariablesBtn = null;
+let workflowVariablesBadge = null;
 
 /**
  * Initialize editor view
@@ -103,6 +106,8 @@ function initEditorView() {
   aiGenerateBtn = document.getElementById('btn-ai-generate');
   aiComposerMeta = document.getElementById('ai-composer-meta');
   aiContextPill = document.getElementById('ai-context-pill');
+  workflowVariablesBtn = document.getElementById('btn-workflow-variables');
+  workflowVariablesBadge = document.getElementById('workflow-variables-badge');
 
   // Populate action palette
   populateActionPalette();
@@ -121,5 +126,6 @@ function initEditorView() {
 
   // Load templates
   loadTemplates();
+  loadSystemSounds();
 }
 

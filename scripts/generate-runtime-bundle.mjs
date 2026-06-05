@@ -20,6 +20,7 @@ const chunkOrder = [
   'workflows-io.ts',
   'workflows-history.ts',
   'editor-state-metadata.ts',
+  'editor-variables.ts',
   'editor-view-controls.ts',
   'editor-ai-compose.ts',
   'editor-palette-events.ts',

@@ -193,8 +193,7 @@ function applyAIGeneratedWorkflow(payload, meta = {}) {
   }
   if (workflowPatch.loopDelay) {
     state.currentWorkflow.loopDelay = workflowPatch.loopDelay;
-    loopDelayMinInput.value = workflowPatch.loopDelay.min;
-    loopDelayMaxInput.value = workflowPatch.loopDelay.max;
+    setDurationRangeMs('loop-delay-min', 'loop-delay-max', workflowPatch.loopDelay.min, workflowPatch.loopDelay.max);
   }
 
   markDirty();

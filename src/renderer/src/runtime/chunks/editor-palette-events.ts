@@ -73,8 +73,8 @@ function setupEditorEvents() {
       if (state.currentWorkflow) {
         state.currentWorkflow.loopCount = parseInt(loopCountInput.value) || 1;
         state.currentWorkflow.loopDelay = {
-          min: parseInt(loopDelayMinInput.value) || 500,
-          max: parseInt(loopDelayMaxInput.value) || 1000
+          min: readDurationMs('loop-delay-min') ?? 500,
+          max: readDurationMs('loop-delay-max') ?? 1000
         };
         markDirty();
         saveCurrentWorkflow();
@@ -106,5 +106,6 @@ function setupEditorEvents() {
 
   // Save as template button
   document.getElementById('btn-save-as-template').addEventListener('click', openSaveAsTemplateModal);
+  workflowVariablesBtn?.addEventListener('click', openWorkflowVariablesModal);
 }
 

@@ -170,8 +170,8 @@ async function renderConfigFields(action, index, targetConfigBody, saveCallback)
           </div>
         </div>
         <div class="config-field">
-          <label>Movement Duration (ms)</label>
-          <input type="number" id="config-duration" min="0" max="5000" value="${action.duration ?? ''}" placeholder="Use default">
+          <label>Movement Duration</label>
+          ${durationFieldHTML({ id: 'config-duration', valueMs: action.duration ?? '', placeholder: 'Use default' })}
           <p class="config-field-hint">Override global setting (leave empty for default)</p>
         </div>
       `;
@@ -311,9 +311,9 @@ async function renderConfigFields(action, index, targetConfigBody, saveCallback)
         save();
       });
 
-      document.getElementById('config-duration').addEventListener('change', (e) => {
-        const val = e.target.value.trim();
-        action.duration = val === '' ? undefined : parseInt(val);
+      document.getElementById('config-duration').addEventListener('change', () => {
+        const ms = readDurationMs('config-duration');
+        action.duration = ms == null ? undefined : ms;
         save();
       });
       break;
@@ -466,27 +466,25 @@ async function renderConfigFields(action, index, targetConfigBody, saveCallback)
     case 'wait':
       configBody.innerHTML = nameFieldHtml + `
         <div class="config-field">
-          <label>Duration (milliseconds)</label>
-          <div class="range-inputs">
-            <input type="number" id="config-wait-min" min="0" max="60000" value="${action.duration?.min || 500}">
-            <span>to</span>
-            <input type="number" id="config-wait-max" min="0" max="60000" value="${action.duration?.max || 1000}">
-          </div>
+          <label>Duration</label>
+          ${durationRangeFieldHTML({ minId: 'config-wait-min', maxId: 'config-wait-max', minMs: action.duration?.min || 500, maxMs: action.duration?.max || 1000 })}
           <p class="config-field-hint">Random delay between min and max for natural timing</p>
         </div>
+        ${renderVariableAssignmentField(action, 'When wait completes')}
       `;
 
       setupName();
+      bindVariableAssignmentField(action, save);
 
-      document.getElementById('config-wait-min').addEventListener('change', (e) => {
+      document.getElementById('config-wait-min').addEventListener('change', () => {
         action.duration = action.duration || {};
-        action.duration.min = parseInt(e.target.value) || 500;
+        action.duration.min = readDurationMs('config-wait-min') ?? 500;
         save();
       });
 
-      document.getElementById('config-wait-max').addEventListener('change', (e) => {
+      document.getElementById('config-wait-max').addEventListener('change', () => {
         action.duration = action.duration || {};
-        action.duration.max = parseInt(e.target.value) || 1000;
+        action.duration.max = readDurationMs('config-wait-max') ?? 1000;
         save();
       });
       break;

@@ -1946,7 +1946,8 @@ let editorState = {
     isAIGenerating: false,
     templates: [],
     selectedActionIndices: [], // For multi-select when saving templates
-    compactView: false
+    compactView: false,
+    systemSounds: [{ id: 'none', label: 'No sound' }]
 };
 // DOM references
 let actionList = null;
@@ -1968,6 +1969,8 @@ let aiPromptInput = null;
 let aiGenerateBtn = null;
 let aiComposerMeta = null;
 let aiContextPill = null;
+let workflowVariablesBtn = null;
+let workflowVariablesBadge = null;
 /**
  * Initialize editor view
  */
@@ -1991,6 +1994,8 @@ function initEditorView() {
     aiGenerateBtn = document.getElementById('btn-ai-generate');
     aiComposerMeta = document.getElementById('ai-composer-meta');
     aiContextPill = document.getElementById('ai-context-pill');
+    workflowVariablesBtn = document.getElementById('btn-workflow-variables');
+    workflowVariablesBadge = document.getElementById('workflow-variables-badge');
     // Populate action palette
     populateActionPalette();
     // Setup event listeners
@@ -2003,6 +2008,409 @@ function initEditorView() {
     initAIComposer();
     // Load templates
     loadTemplates();
+    loadSystemSounds();
+}
+
+// ===== editor-variables.ts =====
+/*
+ * Editor — workflow variables, system sounds, and conditional-branch helpers.
+ * Ported from the pre-React editor monolith; shares the editor's global scope.
+ */
+function normalizeWorkflowVariables(workflow) {
+    if (!workflow)
+        return;
+    const variables = Array.isArray(workflow.variables) ? workflow.variables : [];
+    workflow.variables = variables.map((variable, index) => ({
+        id: variable?.id || generateId(),
+        name: variable?.name || `Variable ${index + 1}`,
+        color: normalizeVariableColor(variable?.color),
+        indicatorTarget: normalizeIndicatorTarget(variable?.indicatorTarget),
+        value: false
+    }));
+}
+function normalizeVariableColor(color) {
+    return /^#[0-9a-f]{6}$/i.test(color || '') ? color : '#f59e0b';
+}
+function normalizeIndicatorTarget(target) {
+    return ['overlay', 'floating-bar', 'both'].includes(target) ? target : 'both';
+}
+function ensureWorkflowVariables() {
+    if (!state.currentWorkflow)
+        return [];
+    normalizeWorkflowVariables(state.currentWorkflow);
+    return state.currentWorkflow.variables;
+}
+/**
+ * Open the Workflow Variables modal. Variables are an optional, advanced feature,
+ * so they live behind this modal instead of permanently occupying the editor canvas.
+ */
+function openWorkflowVariablesModal() {
+    if (!state.currentWorkflow) {
+        showToast('warning', 'No Workflow', 'Open or create a workflow first.');
+        return;
+    }
+    showModal('Workflow Variables', `
+    <div class="variables-modal">
+      <p class="variables-modal-intro">
+        Variables act like status flags. An action such as <strong>Wait</strong>, <strong>Find Image</strong>, or
+        <strong>Find Pixel</strong> can switch a variable on, which flashes the run screen in your chosen color until
+        you reset it — perfect for noticing that something happened while you were away from the keyboard.
+      </p>
+      <div class="workflow-variables-list" id="variables-modal-list"></div>
+      <button class="btn btn-secondary variables-modal-add" id="btn-add-variable-modal" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Add Variable
+      </button>
+    </div>
+  `, [
+        { label: 'Done', class: 'btn-primary' }
+    ]);
+    renderWorkflowVariablesInto(document.getElementById('variables-modal-list'));
+    document.getElementById('btn-add-variable-modal')?.addEventListener('click', addWorkflowVariable);
+}
+/**
+ * Update the toolbar Variables button badge to reflect the current variable count.
+ */
+function updateVariablesBadge() {
+    if (!workflowVariablesBadge)
+        return;
+    const count = state.currentWorkflow?.variables?.length || 0;
+    workflowVariablesBadge.textContent = String(count);
+    workflowVariablesBadge.classList.toggle('hidden', count === 0);
+    workflowVariablesBtn?.classList.toggle('has-variables', count > 0);
+}
+/**
+ * Refresh every Variables UI surface after a change (toolbar badge + open modal list).
+ */
+function refreshWorkflowVariablesUI() {
+    updateVariablesBadge();
+    const modalList = document.getElementById('variables-modal-list');
+    if (modalList)
+        renderWorkflowVariablesInto(modalList);
+}
+/**
+ * Render the editable variable rows into the given container (the modal body).
+ */
+function renderWorkflowVariablesInto(container) {
+    if (!container)
+        return;
+    const variables = ensureWorkflowVariables();
+    if (!state.currentWorkflow || variables.length === 0) {
+        container.innerHTML = `
+      <div class="workflow-variable-empty">
+        No variables yet. Add one, then actions like Wait, Find Image, or Find Pixel can switch it on and flash the run screen until you reset it.
+      </div>
+    `;
+        return;
+    }
+    container.innerHTML = variables.map((variable) => `
+    <div class="workflow-variable-row" data-variable-id="${escapeHtml(variable.id)}">
+      <div class="config-field">
+        <label>Name</label>
+        <input type="text" data-field="name" value="${escapeHtml(variable.name)}" placeholder="Boss spawned">
+      </div>
+      <div class="config-field">
+        <label>Flash Color</label>
+        <div class="workflow-variable-color">
+          <input type="color" data-field="color" value="${escapeHtml(variable.color)}">
+          <span class="workflow-variable-preview" style="color:${escapeHtml(variable.color)}; background:${escapeHtml(variable.color)}"></span>
+        </div>
+      </div>
+      <div class="config-field">
+        <label>Flash In</label>
+        <select data-field="indicatorTarget">
+          <option value="overlay" ${variable.indicatorTarget === 'overlay' ? 'selected' : ''}>Active Modal</option>
+          <option value="floating-bar" ${variable.indicatorTarget === 'floating-bar' ? 'selected' : ''}>Minimized Overlay</option>
+          <option value="both" ${variable.indicatorTarget === 'both' ? 'selected' : ''}>Both</option>
+        </select>
+      </div>
+      <button class="btn btn-danger btn-sm" data-action="delete-variable">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"/>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+        </svg>
+        Delete
+      </button>
+    </div>
+  `).join('');
+    container.querySelectorAll('.workflow-variable-row').forEach((row) => {
+        const variableId = row.dataset.variableId;
+        row.querySelectorAll('[data-field]').forEach((field) => {
+            const fieldName = field.dataset.field;
+            if (fieldName === 'name') {
+                field.addEventListener('input', () => {
+                    updateWorkflowVariable(variableId, fieldName, field.value, { rerender: false });
+                });
+                field.addEventListener('blur', () => {
+                    updateWorkflowVariable(variableId, fieldName, field.value, { rerender: true });
+                });
+                return;
+            }
+            field.addEventListener('input', () => {
+                updateWorkflowVariable(variableId, fieldName, field.value, { rerender: fieldName === 'color' });
+            });
+            field.addEventListener('change', () => {
+                updateWorkflowVariable(variableId, fieldName, field.value, { rerender: true });
+            });
+        });
+        row.querySelector('[data-action="delete-variable"]')?.addEventListener('click', () => {
+            deleteWorkflowVariable(variableId);
+        });
+    });
+}
+function addWorkflowVariable() {
+    if (!state.currentWorkflow)
+        return;
+    const variables = ensureWorkflowVariables();
+    variables.push({
+        id: generateId(),
+        name: `Variable ${variables.length + 1}`,
+        color: '#f59e0b',
+        indicatorTarget: 'both',
+        value: false
+    });
+    markDirty();
+    refreshWorkflowVariablesUI();
+    renderActionSequence();
+    rerenderSelectedActionConfig();
+    saveCurrentWorkflow();
+}
+function updateWorkflowVariable(variableId, field, rawValue, options = {}) {
+    const variable = ensureWorkflowVariables().find((item) => item.id === variableId);
+    if (!variable)
+        return;
+    const shouldRerender = options.rerender !== false;
+    if (field === 'name') {
+        variable.name = rawValue.trim() || 'Variable';
+    }
+    else if (field === 'color') {
+        variable.color = normalizeVariableColor(rawValue);
+    }
+    else if (field === 'indicatorTarget') {
+        variable.indicatorTarget = normalizeIndicatorTarget(rawValue);
+    }
+    markDirty();
+    if (shouldRerender) {
+        refreshWorkflowVariablesUI();
+        renderActionSequence();
+        rerenderSelectedActionConfig();
+    }
+    saveCurrentWorkflow();
+}
+function deleteWorkflowVariable(variableId) {
+    if (!state.currentWorkflow)
+        return;
+    state.currentWorkflow.variables = ensureWorkflowVariables().filter((item) => item.id !== variableId);
+    clearVariableAssignments(variableId, state.currentWorkflow.actions || []);
+    markDirty();
+    refreshWorkflowVariablesUI();
+    renderActionSequence();
+    rerenderSelectedActionConfig();
+    saveCurrentWorkflow();
+}
+function clearVariableAssignments(variableId, actions) {
+    actions.forEach((action) => {
+        if (action.setVariableId === variableId) {
+            delete action.setVariableId;
+        }
+        if (Array.isArray(action.actions))
+            clearVariableAssignments(variableId, action.actions);
+        if (Array.isArray(action.thenActions))
+            clearVariableAssignments(variableId, action.thenActions);
+        if (Array.isArray(action.elseActions))
+            clearVariableAssignments(variableId, action.elseActions);
+    });
+}
+function rerenderSelectedActionConfig() {
+    const currentAction = state.currentWorkflow?.actions?.[editorState.selectedActionIndex];
+    if (!currentAction || configPanel?.classList.contains('hidden'))
+        return;
+    renderConfigFields(currentAction, editorState.selectedActionIndex);
+}
+function getActionVariableSuffix(action) {
+    if (!action?.setVariableId || !state.currentWorkflow?.variables?.length) {
+        return '';
+    }
+    const variable = state.currentWorkflow.variables.find((item) => item.id === action.setVariableId);
+    return variable ? ` -> set ${variable.name}` : '';
+}
+async function loadSystemSounds() {
+    try {
+        const sounds = await window.workflowAPI.getSystemSounds();
+        if (Array.isArray(sounds) && sounds.length > 0) {
+            editorState.systemSounds = sounds;
+        }
+    }
+    catch (error) {
+        console.warn('Failed to load system sounds:', error);
+    }
+    const currentAction = state.currentWorkflow?.actions?.[editorState.selectedActionIndex];
+    if (currentAction?.type === 'image_detect' && !configPanel.classList.contains('hidden')) {
+        renderConfigFields(currentAction, editorState.selectedActionIndex);
+    }
+}
+function renderSoundOptions(selectedId) {
+    return editorState.systemSounds.map((sound) => `
+    <option value="${escapeHtml(sound.id)}" data-sound-type="${escapeHtml(sound.type || 'builtin')}" ${sound.id === (selectedId || 'none') ? 'selected' : ''}>
+      ${escapeHtml(sound.label)}
+    </option>
+  `).join('');
+}
+function getSoundMeta(soundId) {
+    return editorState.systemSounds.find((sound) => sound.id === soundId) || null;
+}
+function renderVariableAssignmentField(action, triggerLabel) {
+    const variables = ensureWorkflowVariables();
+    const options = ['<option value="">Do not set a variable</option>']
+        .concat(variables.map((variable) => `
+      <option value="${escapeHtml(variable.id)}" ${action.setVariableId === variable.id ? 'selected' : ''}>
+        ${escapeHtml(variable.name)}
+      </option>
+    `))
+        .join('');
+    return `
+    <div class="config-field">
+      <label>${triggerLabel}</label>
+      <select id="config-set-variable-id" ${variables.length === 0 ? 'disabled' : ''}>
+        ${options}
+      </select>
+      <p class="config-field-hint">
+        ${variables.length === 0
+        ? 'Create a workflow variable above first, then return here to link this action.'
+        : 'When this action succeeds, the selected variable will turn on until you reset it from the overlay or minimized bar.'}
+      </p>
+    </div>
+  `;
+}
+function bindVariableAssignmentField(action, save) {
+    const select = document.getElementById('config-set-variable-id');
+    if (!select)
+        return;
+    select.addEventListener('change', (e) => {
+        action.setVariableId = e.target.value || undefined;
+        save();
+    });
+}
+/**
+ * Update an action and save
+
+function normalizeConditionalBranchCondition(condition) {
+  const normalized = condition && typeof condition === 'object'
+    ? { ...condition }
+    : { type: 'image_present' };
+
+  if (!['image_present', 'image_absent', 'pixel_match'].includes(normalized.type)) {
+    normalized.type = 'image_present';
+  }
+
+  if (!normalized.color) {
+    normalized.color = { r: 255, g: 0, b: 0 };
+  }
+  if (!Number.isFinite(normalized.tolerance)) {
+    normalized.tolerance = 10;
+  }
+  if (!Number.isFinite(normalized.confidence)) {
+    normalized.confidence = 0.9;
+  }
+
+  return normalized;
+}
+
+function renderConditionalConditionFields(prefix, label, condition) {
+  const isPixel = condition.type === 'pixel_match';
+  const confidence = Math.round((condition.confidence || 0.9) * 100);
+  const tolerance = condition.tolerance || 10;
+  const colorHex = rgbToHex(condition.color);
+
+  return `
+    <div class="config-field">
+      <label>${label}</label>
+      <select id="${prefix}-type">
+        <option value="image_present" ${condition.type === 'image_present' ? 'selected' : ''}>Image Present</option>
+        <option value="image_absent" ${condition.type === 'image_absent' ? 'selected' : ''}>Image Absent</option>
+        <option value="pixel_match" ${condition.type === 'pixel_match' ? 'selected' : ''}>Pixel Color Match</option>
+      </select>
+    </div>
+    <div class="config-field" id="${prefix}-image-field" ${isPixel ? 'style="display:none"' : ''}>
+      <label>Image Template</label>
+      <div id="${prefix}-image"></div>
+      <button class="btn btn-secondary btn-sm" id="${prefix}-capture-image" style="margin-top:8px">
+        Capture New Image
+      </button>
+    </div>
+    <div class="config-field" id="${prefix}-confidence-field" ${isPixel ? 'style="display:none"' : ''}>
+      <label>Match Confidence: <span id="${prefix}-conf-value">${confidence}%</span></label>
+      <input type="range" id="${prefix}-confidence" min="50" max="100" value="${confidence}">
+    </div>
+    <div class="config-field" id="${prefix}-pixel-field" ${!isPixel ? 'style="display:none"' : ''}>
+      <label>Pixel Color</label>
+      <div class="color-picker-row">
+        <input type="color" id="${prefix}-color" value="${colorHex}">
+        <span id="${prefix}-color-preview" style="display:inline-block;width:24px;height:24px;border-radius:4px;background:${colorHex};border:1px solid var(--border)"></span>
+      </div>
+    </div>
+    <div class="config-field" id="${prefix}-tolerance-field" ${!isPixel ? 'style="display:none"' : ''}>
+      <label>Color Tolerance: <span id="${prefix}-tol-value">${tolerance}</span></label>
+      <input type="range" id="${prefix}-tolerance" min="0" max="50" value="${tolerance}">
+    </div>
+  `;
+}
+
+function setConditionalConditionFieldVisibility(prefix, type) {
+  const isPixel = type === 'pixel_match';
+  document.getElementById(`${prefix}-image-field`).style.display = isPixel ? 'none' : '';
+  document.getElementById(`${prefix}-confidence-field`).style.display = isPixel ? 'none' : '';
+  document.getElementById(`${prefix}-pixel-field`).style.display = isPixel ? '' : 'none';
+  document.getElementById(`${prefix}-tolerance-field`).style.display = isPixel ? '' : 'none';
+}
+
+async function bindConditionalConditionEditor(prefix, condition, save) {
+  const imagePicker = await loadImageOptions(`${prefix}-image`, condition.imageId, (val) => {
+    condition.imageId = val;
+    save();
+  });
+
+  document.getElementById(`${prefix}-type`).addEventListener('change', (e) => {
+    condition.type = e.target.value;
+    setConditionalConditionFieldVisibility(prefix, e.target.value);
+    save();
+  });
+
+  document.getElementById(`${prefix}-confidence`).addEventListener('input', (e) => {
+    const val = parseInt(e.target.value);
+    document.getElementById(`${prefix}-conf-value`).textContent = `${val}%`;
+    condition.confidence = val / 100;
+    save();
+  });
+
+  document.getElementById(`${prefix}-color`).addEventListener('change', (e) => {
+    condition.color = hexToRgb(e.target.value);
+    document.getElementById(`${prefix}-color-preview`).style.background = e.target.value;
+    save();
+  });
+
+  document.getElementById(`${prefix}-tolerance`).addEventListener('input', (e) => {
+    const val = parseInt(e.target.value);
+    document.getElementById(`${prefix}-tol-value`).textContent = val;
+    condition.tolerance = val;
+    save();
+  });
+
+  document.getElementById(`${prefix}-capture-image`).addEventListener('click', () => {
+    captureImageTemplate((imageId) => {
+      condition.imageId = imageId;
+      if (imagePicker) {
+        imagePicker.setValue(imageId);
+        imagePicker.refresh();
+      }
+      save();
+    });
+  });
+
+  return imagePicker;
 }
 
 // ===== editor-view-controls.ts =====
@@ -2280,8 +2688,7 @@ function applyAIGeneratedWorkflow(payload, meta = {}) {
     }
     if (workflowPatch.loopDelay) {
         state.currentWorkflow.loopDelay = workflowPatch.loopDelay;
-        loopDelayMinInput.value = workflowPatch.loopDelay.min;
-        loopDelayMaxInput.value = workflowPatch.loopDelay.max;
+        setDurationRangeMs('loop-delay-min', 'loop-delay-max', workflowPatch.loopDelay.min, workflowPatch.loopDelay.max);
     }
     markDirty();
     renderActionSequence();
@@ -2357,8 +2764,8 @@ function setupEditorEvents() {
             if (state.currentWorkflow) {
                 state.currentWorkflow.loopCount = parseInt(loopCountInput.value) || 1;
                 state.currentWorkflow.loopDelay = {
-                    min: parseInt(loopDelayMinInput.value) || 500,
-                    max: parseInt(loopDelayMaxInput.value) || 1000
+                    min: readDurationMs('loop-delay-min') ?? 500,
+                    max: readDurationMs('loop-delay-max') ?? 1000
                 };
                 markDirty();
                 saveCurrentWorkflow();
@@ -2385,6 +2792,7 @@ function setupEditorEvents() {
     document.getElementById('btn-close-config').addEventListener('click', closeConfigPanel);
     // Save as template button
     document.getElementById('btn-save-as-template').addEventListener('click', openSaveAsTemplateModal);
+    workflowVariablesBtn?.addEventListener('click', openWorkflowVariablesModal);
 }
 
 // ===== editor-sequence-base.ts =====
@@ -2392,6 +2800,7 @@ function setupEditorEvents() {
  * Load a workflow into the editor
  */
 function loadWorkflowIntoEditor(workflow) {
+    normalizeWorkflowVariables(workflow);
     state.currentWorkflow = workflow;
     editorState.selectedActionIndex = -1;
     editorState.isDirty = false;
@@ -2400,8 +2809,8 @@ function loadWorkflowIntoEditor(workflow) {
     loopInfiniteInput.checked = !!workflow.infiniteLoop;
     loopCountInput.value = workflow.loopCount || 1;
     loopCountInput.disabled = !!workflow.infiniteLoop;
-    loopDelayMinInput.value = workflow.loopDelay?.min || 500;
-    loopDelayMaxInput.value = workflow.loopDelay?.max || 1000;
+    setDurationRangeMs('loop-delay-min', 'loop-delay-max', workflow.loopDelay?.min ?? 500, workflow.loopDelay?.max ?? 1000);
+    updateVariablesBadge();
     // Render action sequence
     renderActionSequence();
     // Close config panel
@@ -2418,7 +2827,8 @@ function renderActionSequence() {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M12 5v14M5 12h14"/>
         </svg>
-        <p>Drag actions here to build your workflow</p>
+        <p>Drag an action from the left to start building</p>
+        <span class="empty-sequence-hint">or double-click any action · then press the green Run button</span>
       </div>
     `;
         return;
@@ -2841,6 +3251,7 @@ function getCompactLabel(action) {
  * Get a summary string for an action
  */
 function getActionSummary(action) {
+    const variableSuffix = getActionVariableSuffix(action);
     switch (action.type) {
         case 'mouse_move':
             if (action.moveMode === 'image' && action.imageId) {
@@ -2869,17 +3280,26 @@ function getActionSummary(action) {
             if (action.duration) {
                 const min = action.duration.min || action.duration;
                 const max = action.duration.max || action.duration;
-                return min === max ? `Wait ${min}ms` : `Wait ${min}-${max}ms`;
+                return `${min === max ? `Wait ${min}ms` : `Wait ${min}-${max}ms`}${variableSuffix}`;
             }
-            return 'Wait for condition';
+            return `Wait for condition${variableSuffix}`;
         case 'conditional':
-            return action.condition?.type || 'If condition';
+            if (action.useElseCondition) {
+                return `${action.waitUntilEitherCondition ? 'Wait for either condition' : 'Check two conditions'}${variableSuffix}`;
+            }
+            return `${action.condition?.type || 'If condition'}${variableSuffix}`;
         case 'loop':
             return action.infinite ? 'Repeat forever' : `Repeat ${action.count || 1} times`;
-        case 'image_detect':
-            return action.imageId ? 'Find saved image' : 'Find image';
+        case 'image_detect': {
+            const absent = action.detectMode === 'absent';
+            const verb = absent ? 'Detect missing image' : 'Find image';
+            const imgText = action.imageId ? (absent ? 'Detect missing saved image' : 'Find saved image') : verb;
+            return (action.soundId && action.soundId !== 'none'
+                ? `${imgText} + ${action.soundId === 'tts' ? 'speech' : 'sound'}`
+                : imgText) + variableSuffix;
+        }
         case 'pixel_detect':
-            return action.color ? `Find color #${action.color.r.toString(16)}${action.color.g.toString(16)}${action.color.b.toString(16)}` : 'Find pixel color';
+            return `${action.color ? `Find color #${action.color.r.toString(16)}${action.color.g.toString(16)}${action.color.b.toString(16)}` : 'Find pixel color'}${variableSuffix}`;
         default:
             return '';
     }
@@ -3001,9 +3421,18 @@ function createDefaultAction(type) {
         mouse_click: { type, button: 'left', clickType: 'single' },
         keyboard: { type, mode: 'type', text: '', actions: [] },
         wait: { type, duration: { min: 500, max: 1000 } },
-        conditional: { type, condition: { type: 'image_present' }, thenActions: [], elseActions: [] },
+        conditional: {
+            type,
+            condition: { type: 'image_present' },
+            elseCondition: { type: 'image_present' },
+            useElseCondition: false,
+            waitUntilEitherCondition: false,
+            pollInterval: 500,
+            thenActions: [],
+            elseActions: []
+        },
         loop: { type, count: 3, actions: [], delay: { min: 500, max: 1000 } },
-        image_detect: { type, imageId: null, confidence: 0.9 },
+        image_detect: { type, detectMode: 'present', imageId: null, confidence: 0.9, soundId: 'none', soundVolume: 100, soundRepeatCount: 1, speechText: '' },
         pixel_detect: { type, color: { r: 255, g: 0, b: 0 }, tolerance: 10 }
     };
     return { id: generateId(), ...defaults[type] } || { id: generateId(), type };
@@ -3349,8 +3778,8 @@ async function renderConfigFields(action, index, targetConfigBody, saveCallback)
           </div>
         </div>
         <div class="config-field">
-          <label>Movement Duration (ms)</label>
-          <input type="number" id="config-duration" min="0" max="5000" value="${action.duration ?? ''}" placeholder="Use default">
+          <label>Movement Duration</label>
+          ${durationFieldHTML({ id: 'config-duration', valueMs: action.duration ?? '', placeholder: 'Use default' })}
           <p class="config-field-hint">Override global setting (leave empty for default)</p>
         </div>
       `;
@@ -3475,9 +3904,9 @@ async function renderConfigFields(action, index, targetConfigBody, saveCallback)
                 action.scaleDown = e.target.checked;
                 save();
             });
-            document.getElementById('config-duration').addEventListener('change', (e) => {
-                const val = e.target.value.trim();
-                action.duration = val === '' ? undefined : parseInt(val);
+            document.getElementById('config-duration').addEventListener('change', () => {
+                const ms = readDurationMs('config-duration');
+                action.duration = ms == null ? undefined : ms;
                 save();
             });
             break;
@@ -3615,24 +4044,22 @@ async function renderConfigFields(action, index, targetConfigBody, saveCallback)
         case 'wait':
             configBody.innerHTML = nameFieldHtml + `
         <div class="config-field">
-          <label>Duration (milliseconds)</label>
-          <div class="range-inputs">
-            <input type="number" id="config-wait-min" min="0" max="60000" value="${action.duration?.min || 500}">
-            <span>to</span>
-            <input type="number" id="config-wait-max" min="0" max="60000" value="${action.duration?.max || 1000}">
-          </div>
+          <label>Duration</label>
+          ${durationRangeFieldHTML({ minId: 'config-wait-min', maxId: 'config-wait-max', minMs: action.duration?.min || 500, maxMs: action.duration?.max || 1000 })}
           <p class="config-field-hint">Random delay between min and max for natural timing</p>
         </div>
+        ${renderVariableAssignmentField(action, 'When wait completes')}
       `;
             setupName();
-            document.getElementById('config-wait-min').addEventListener('change', (e) => {
+            bindVariableAssignmentField(action, save);
+            document.getElementById('config-wait-min').addEventListener('change', () => {
                 action.duration = action.duration || {};
-                action.duration.min = parseInt(e.target.value) || 500;
+                action.duration.min = readDurationMs('config-wait-min') ?? 500;
                 save();
             });
-            document.getElementById('config-wait-max').addEventListener('change', (e) => {
+            document.getElementById('config-wait-max').addEventListener('change', () => {
                 action.duration = action.duration || {};
-                action.duration.max = parseInt(e.target.value) || 1000;
+                action.duration.max = readDurationMs('config-wait-max') ?? 1000;
                 save();
             });
             break;
@@ -3654,42 +4081,40 @@ async function renderConfigFields(action, index, targetConfigBody, saveCallback)
 }
 
 // ===== editor-config-logic.ts =====
+/* Editor config — conditional + loop actions (ported from WIP). Shares the editor global scope. */
 async function renderConditionalConfig(configBody, action, index, nameFieldHtml = '', save) {
     if (!save)
         save = () => updateAction(index, action);
-    action.condition = action.condition || { type: 'image_present' };
+    action.condition = normalizeConditionalBranchCondition(action.condition);
+    action.elseCondition = normalizeConditionalBranchCondition(action.elseCondition);
+    action.useElseCondition = !!action.useElseCondition;
+    action.waitUntilEitherCondition = !!action.waitUntilEitherCondition;
+    action.pollInterval = Math.max(100, parseInt(action.pollInterval, 10) || 500);
     action.thenActions = action.thenActions || [];
     action.elseActions = action.elseActions || [];
     configBody.innerHTML = nameFieldHtml + `
+    ${renderConditionalConditionFields('config-condition', 'If condition', action.condition)}
     <div class="config-field">
-      <label>Condition Type</label>
-      <select id="config-condition-type">
-        <option value="image_present" ${action.condition.type === 'image_present' ? 'selected' : ''}>Image Present</option>
-        <option value="image_absent" ${action.condition.type === 'image_absent' ? 'selected' : ''}>Image Absent</option>
-        <option value="pixel_match" ${action.condition.type === 'pixel_match' ? 'selected' : ''}>Pixel Color Match</option>
-      </select>
+      <label class="checkbox-label">
+        <input type="checkbox" id="config-use-else-condition" ${action.useElseCondition ? 'checked' : ''}>
+        Use a separate else condition
+      </label>
+      <p class="config-field-hint">Lets the else branch watch for its own image or pixel instead of firing whenever the if condition is false.</p>
     </div>
-    <div class="config-field" id="cond-image-field" ${action.condition.type === 'pixel_match' ? 'style="display:none"' : ''}>
-      <label>Image Template</label>
-      <div id="config-condition-image"></div>
-      <button class="btn btn-secondary btn-sm" id="btn-capture-cond-image" style="margin-top:8px">
-        Capture New Image
-      </button>
-    </div>
-    <div class="config-field" id="cond-confidence-field" ${action.condition.type === 'pixel_match' ? 'style="display:none"' : ''}>
-      <label>Match Confidence: <span id="cond-conf-value">${Math.round((action.condition.confidence || 0.9) * 100)}%</span></label>
-      <input type="range" id="config-condition-confidence" min="50" max="100" value="${Math.round((action.condition.confidence || 0.9) * 100)}">
-    </div>
-    <div class="config-field" id="cond-pixel-field" ${action.condition.type !== 'pixel_match' ? 'style="display:none"' : ''}>
-      <label>Pixel Color</label>
-      <div class="color-picker-row">
-        <input type="color" id="config-condition-color" value="${rgbToHex(action.condition.color)}">
-        <span id="cond-color-preview" style="display:inline-block;width:24px;height:24px;border-radius:4px;background:${rgbToHex(action.condition.color)};border:1px solid var(--border)"></span>
+    <div id="else-condition-section" ${!action.useElseCondition ? 'style="display:none"' : ''}>
+      ${renderConditionalConditionFields('config-else-condition', 'Else condition', action.elseCondition)}
+      <div class="config-field">
+        <label class="checkbox-label">
+          <input type="checkbox" id="config-wait-until-either" ${action.waitUntilEitherCondition ? 'checked' : ''}>
+          Keep checking until either branch matches
+        </label>
+        <p class="config-field-hint">Best for looping between two image checks. If both match on the same pass, the Then branch wins.</p>
       </div>
-    </div>
-    <div class="config-field" id="cond-tolerance-field" ${action.condition.type !== 'pixel_match' ? 'style="display:none"' : ''}>
-      <label>Color Tolerance: <span id="cond-tol-value">${action.condition.tolerance || 10}</span></label>
-      <input type="range" id="config-condition-tolerance" min="0" max="50" value="${action.condition.tolerance || 10}">
+      <div class="config-field" id="conditional-poll-interval-field" ${!action.waitUntilEitherCondition ? 'style="display:none"' : ''}>
+        <label>Check interval</label>
+        ${durationFieldHTML({ id: 'config-conditional-poll-interval', valueMs: action.pollInterval ?? '', placeholder: '500' })}
+        <p class="config-field-hint">How often to re-check both conditions while waiting.</p>
+      </div>
     </div>
     <div class="config-section">
       <div class="config-section-header">
@@ -3699,7 +4124,7 @@ async function renderConditionalConfig(configBody, action, index, nameFieldHtml 
     </div>
     <div class="config-section">
       <div class="config-section-header">
-        <span>Else (if false): <span id="else-actions-count">${action.elseActions.length}</span> actions</span>
+        <span>${action.useElseCondition ? 'Else (if else condition matches)' : 'Else (if false)'}: <span id="else-actions-count">${action.elseActions.length}</span> actions</span>
         <button class="btn btn-secondary btn-sm" id="btn-edit-else">Edit</button>
       </div>
     </div>
@@ -3710,11 +4135,10 @@ async function renderConditionalConfig(configBody, action, index, nameFieldHtml 
       </label>
     </div>
   `;
-    // Load images for dropdown
-    const condImagePicker = await loadImageOptions('config-condition-image', action.condition.imageId, (val) => {
-        action.condition.imageId = val;
-        save();
-    });
+    await bindConditionalConditionEditor('config-condition', action.condition, save);
+    if (action.useElseCondition) {
+        await bindConditionalConditionEditor('config-else-condition', action.elseCondition, save);
+    }
     const nameInput = document.getElementById('config-action-name');
     if (nameInput) {
         nameInput.addEventListener('input', (e) => {
@@ -3722,41 +4146,23 @@ async function renderConditionalConfig(configBody, action, index, nameFieldHtml 
             save();
         });
     }
-    document.getElementById('config-condition-type').addEventListener('change', (e) => {
-        action.condition.type = e.target.value;
-        const isPixel = e.target.value === 'pixel_match';
-        document.getElementById('cond-image-field').style.display = isPixel ? 'none' : '';
-        document.getElementById('cond-confidence-field').style.display = isPixel ? 'none' : '';
-        document.getElementById('cond-pixel-field').style.display = isPixel ? '' : 'none';
-        document.getElementById('cond-tolerance-field').style.display = isPixel ? '' : 'none';
+    document.getElementById('config-use-else-condition').addEventListener('change', (e) => {
+        action.useElseCondition = e.target.checked;
+        if (!action.useElseCondition) {
+            action.waitUntilEitherCondition = false;
+        }
+        save();
+        renderConditionalConfig(configBody, action, index, nameFieldHtml, save);
+    });
+    document.getElementById('config-wait-until-either')?.addEventListener('change', (e) => {
+        action.waitUntilEitherCondition = e.target.checked;
+        document.getElementById('conditional-poll-interval-field').style.display = e.target.checked ? '' : 'none';
         save();
     });
-    document.getElementById('config-condition-confidence').addEventListener('input', (e) => {
-        const val = parseInt(e.target.value);
-        document.getElementById('cond-conf-value').textContent = val + '%';
-        action.condition.confidence = val / 100;
+    document.getElementById('config-conditional-poll-interval')?.addEventListener('change', () => {
+        const ms = readDurationMs('config-conditional-poll-interval');
+        action.pollInterval = Math.max(100, Math.min(30000, ms ?? 500));
         save();
-    });
-    document.getElementById('config-condition-color').addEventListener('change', (e) => {
-        action.condition.color = hexToRgb(e.target.value);
-        document.getElementById('cond-color-preview').style.background = e.target.value;
-        save();
-    });
-    document.getElementById('config-condition-tolerance').addEventListener('input', (e) => {
-        const val = parseInt(e.target.value);
-        document.getElementById('cond-tol-value').textContent = val;
-        action.condition.tolerance = val;
-        save();
-    });
-    document.getElementById('btn-capture-cond-image').addEventListener('click', () => {
-        captureImageTemplate((imageId) => {
-            action.condition.imageId = imageId;
-            if (condImagePicker) {
-                condImagePicker.setValue(imageId);
-                condImagePicker.refresh();
-            }
-            save();
-        });
     });
     document.getElementById('btn-edit-then').addEventListener('click', () => {
         openNestedActionsEditor(action, 'thenActions', 'Then Actions', index);
@@ -3790,12 +4196,8 @@ function renderLoopConfig(configBody, action, index, nameFieldHtml = '', save) {
       <input type="number" id="config-loop-count" min="1" max="10000" value="${action.count || 3}">
     </div>
     <div class="config-field">
-      <label>Delay Between Iterations (ms)</label>
-      <div class="range-inputs">
-        <input type="number" id="config-loop-delay-min" min="0" max="60000" value="${action.delay.min || 500}">
-        <span>to</span>
-        <input type="number" id="config-loop-delay-max" min="0" max="60000" value="${action.delay.max || 1000}">
-      </div>
+      <label>Delay Between Iterations</label>
+      ${durationRangeFieldHTML({ minId: 'config-loop-delay-min', maxId: 'config-loop-delay-max', minMs: action.delay.min || 500, maxMs: action.delay.max || 1000 })}
     </div>
     <div class="config-section">
       <div class="config-section-header">
@@ -3827,12 +4229,12 @@ function renderLoopConfig(configBody, action, index, nameFieldHtml = '', save) {
         action.count = parseInt(e.target.value) || 3;
         save();
     });
-    document.getElementById('config-loop-delay-min').addEventListener('change', (e) => {
-        action.delay.min = parseInt(e.target.value) || 500;
+    document.getElementById('config-loop-delay-min').addEventListener('change', () => {
+        action.delay.min = readDurationMs('config-loop-delay-min') ?? 500;
         save();
     });
-    document.getElementById('config-loop-delay-max').addEventListener('change', (e) => {
-        action.delay.max = parseInt(e.target.value) || 1000;
+    document.getElementById('config-loop-delay-max').addEventListener('change', () => {
+        action.delay.max = readDurationMs('config-loop-delay-max') ?? 1000;
         save();
     });
     document.getElementById('btn-edit-loop-actions').addEventListener('click', () => {
@@ -3848,10 +4250,33 @@ function renderLoopConfig(configBody, action, index, nameFieldHtml = '', save) {
  */
 
 // ===== editor-config-image.ts =====
+/* Editor config — image-detect action (ported from WIP). Shares the editor global scope. */
 async function renderImageDetectConfig(configBody, action, index, nameFieldHtml = '', save) {
     if (!save)
         save = () => updateAction(index, action);
+    action.detectMode = action.detectMode || 'present';
+    action.soundId = action.soundId || 'none';
+    action.soundVolume = action.soundVolume || 100;
+    action.soundRepeatCount = action.soundRepeatCount || 1;
+    action.speechText = action.speechText || '';
+    const selectedSoundMeta = getSoundMeta(action.soundId);
+    const isSpeechSound = action.soundId === 'tts';
+    const isCustomSound = selectedSoundMeta?.type === 'custom';
+    const isAbsent = action.detectMode === 'absent';
+    const detectLabel = isAbsent ? 'missing' : 'found';
+    const modeHints = {
+        present: 'Succeeds when the image appears on screen',
+        absent: 'Succeeds when the image is NOT on screen (detect when something disappears)'
+    };
     configBody.innerHTML = nameFieldHtml + `
+    <div class="config-field">
+      <label>Detection Mode</label>
+      <div class="toggle-group">
+        <button class="toggle-btn ${!isAbsent ? 'active' : ''}" data-detect-mode="present">Find Image</button>
+        <button class="toggle-btn ${isAbsent ? 'active' : ''}" data-detect-mode="absent">Find Missing Image</button>
+      </div>
+      <p class="config-field-hint">${modeHints[action.detectMode]}</p>
+    </div>
     <div class="config-field">
       <label>Image Template</label>
       <div id="config-image-id"></div>
@@ -3876,15 +4301,44 @@ async function renderImageDetectConfig(configBody, action, index, nameFieldHtml 
       <p class="config-field-hint">Higher values require closer match</p>
     </div>
     <div class="config-field">
+      <label>Sound When ${isAbsent ? 'Image Missing' : 'Image Found'}</label>
+      <div class="input-group">
+        <select id="config-image-found-sound">
+          ${renderSoundOptions(action.soundId)}
+        </select>
+        <button class="btn btn-secondary" id="btn-test-image-sound" ${action.soundId === 'none' ? 'disabled' : ''}>
+          Test
+        </button>
+        <button class="btn btn-secondary" id="btn-import-custom-sound">Import</button>
+        <button class="btn btn-danger" id="btn-delete-custom-sound" ${isCustomSound ? '' : 'disabled'}>Delete</button>
+      </div>
+      <p class="config-field-hint">Choose a built-in alert, import your own audio file, or speak custom text aloud.</p>
+    </div>
+    <div class="config-field" id="speech-text-field" ${isSpeechSound ? '' : 'style="display:none"'}>
+      <label>Speech Text</label>
+      <textarea id="config-speech-text" rows="3" placeholder="Boss spawned. Check the screen now.">${escapeHtml(action.speechText)}</textarea>
+      <p class="config-field-hint">This text will be spoken aloud when the image is ${detectLabel}.</p>
+    </div>
+    <div class="config-field">
+      <label>Sound Volume: <span id="sound-volume-value">${action.soundVolume}%</span></label>
+      <input type="range" id="config-image-sound-volume" min="25" max="500" value="${action.soundVolume}">
+      <p class="config-field-hint">100% is normal volume. Higher values push the alert much harder.</p>
+    </div>
+    <div class="config-field">
+      <label>Repeat Sound</label>
+      <input type="number" id="config-image-sound-repeat-count" min="1" max="10" value="${action.soundRepeatCount}">
+      <p class="config-field-hint">How many times the sound should play when this image is ${detectLabel}.</p>
+    </div>
+    <div class="config-field">
       <label class="checkbox-label">
         <input type="checkbox" id="config-wait-until-found" ${action.waitUntilFound ? 'checked' : ''}>
-        Wait until found
+        Wait until ${isAbsent ? 'missing' : 'found'}
       </label>
-      <p class="config-field-hint">Keep checking until the image appears on screen</p>
+      <p class="config-field-hint">${isAbsent ? 'Keep checking until the image disappears from screen' : 'Keep checking until the image appears on screen'}</p>
     </div>
     <div class="config-field" id="poll-interval-field" ${!action.waitUntilFound ? 'style="display:none"' : ''}>
-      <label>Check interval (ms)</label>
-      <input type="number" id="config-poll-interval" min="100" max="30000" value="${action.pollInterval || 500}" placeholder="500">
+      <label>Check interval</label>
+      ${durationFieldHTML({ id: 'config-poll-interval', valueMs: action.pollInterval || 500, placeholder: '500' })}
       <p class="config-field-hint">How often to re-check for the image</p>
     </div>
     <div class="config-field">
@@ -3934,8 +4388,9 @@ async function renderImageDetectConfig(configBody, action, index, nameFieldHtml 
     <div class="config-field">
       <label class="checkbox-label">
         <input type="checkbox" id="config-fail-not-found" ${action.failOnNotFound ? 'checked' : ''} ${action.waitUntilFound ? 'disabled' : ''}>
-        Fail if not found
+        Fail if ${isAbsent ? 'still present' : 'not found'}
       </label>
+      <p class="config-field-hint">${isAbsent ? 'Stop the workflow if the image is still on screen' : 'Stop the workflow if the image cannot be found'}</p>
     </div>
     <div class="config-field">
       <label class="checkbox-label">
@@ -3943,6 +4398,7 @@ async function renderImageDetectConfig(configBody, action, index, nameFieldHtml 
         Continue on error
       </label>
     </div>
+    ${renderVariableAssignmentField(action, isAbsent ? 'When image is missing' : 'When image is found')}
   `;
     // Load images for dropdown
     const detectImagePicker = await loadImageOptions('config-image-id', action.imageId, (val) => {
@@ -3957,6 +4413,15 @@ async function renderImageDetectConfig(configBody, action, index, nameFieldHtml 
             save();
         });
     }
+    bindVariableAssignmentField(action, save);
+    // Detection mode toggle (present vs absent)
+    configBody.querySelectorAll('[data-detect-mode]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            action.detectMode = btn.dataset.detectMode;
+            save();
+            renderImageDetectConfig(configBody, action, index, nameFieldHtml, save);
+        });
+    });
     document.getElementById('btn-capture-image').addEventListener('click', () => {
         captureImageTemplate((imageId) => {
             action.imageId = imageId;
@@ -3974,6 +4439,76 @@ async function renderImageDetectConfig(configBody, action, index, nameFieldHtml 
         action.confidence = val / 100;
         save();
     });
+    document.getElementById('config-image-found-sound').addEventListener('change', (e) => {
+        action.soundId = e.target.value;
+        const soundMeta = getSoundMeta(action.soundId);
+        const speechField = document.getElementById('speech-text-field');
+        document.getElementById('btn-test-image-sound').disabled = e.target.value === 'none';
+        document.getElementById('btn-delete-custom-sound').disabled = soundMeta?.type !== 'custom';
+        if (speechField)
+            speechField.style.display = action.soundId === 'tts' ? '' : 'none';
+        save();
+    });
+    document.getElementById('config-speech-text')?.addEventListener('input', (e) => {
+        action.speechText = e.target.value;
+        save();
+    });
+    document.getElementById('config-image-sound-volume').addEventListener('input', (e) => {
+        const value = Math.max(25, Math.min(500, parseInt(e.target.value) || 100));
+        action.soundVolume = value;
+        document.getElementById('sound-volume-value').textContent = `${value}%`;
+        save();
+    });
+    document.getElementById('config-image-sound-repeat-count').addEventListener('change', (e) => {
+        const value = Math.max(1, Math.min(10, parseInt(e.target.value) || 1));
+        action.soundRepeatCount = value;
+        e.target.value = value;
+        save();
+    });
+    document.getElementById('btn-test-image-sound').addEventListener('click', async () => {
+        if (!action.soundId || action.soundId === 'none')
+            return;
+        if (typeof window.playWorkflowSound === 'function') {
+            window.playWorkflowSound({
+                soundId: action.soundId,
+                volume: action.soundVolume || 100,
+                repeatCount: action.soundRepeatCount || 1,
+                speechText: action.speechText || ''
+            });
+        }
+    });
+    document.getElementById('btn-import-custom-sound').addEventListener('click', async () => {
+        try {
+            const imported = await window.workflowAPI.importCustomSound?.();
+            if (!imported?.id)
+                return;
+            await loadSystemSounds();
+            action.soundId = imported.id;
+            save();
+            renderConfigFields(action, index, configBody, save);
+            showToast('success', 'Custom Sound Imported', `"${imported.label}" is ready to use.`);
+        }
+        catch (error) {
+            console.error('Failed to import custom sound:', error);
+            showToast('error', 'Error', error.message || 'Failed to import custom sound');
+        }
+    });
+    document.getElementById('btn-delete-custom-sound').addEventListener('click', async () => {
+        if (getSoundMeta(action.soundId)?.type !== 'custom')
+            return;
+        try {
+            await window.workflowAPI.deleteCustomSound?.(action.soundId);
+            action.soundId = 'none';
+            save();
+            await loadSystemSounds();
+            renderConfigFields(action, index, configBody, save);
+            showToast('success', 'Deleted', 'Custom sound removed');
+        }
+        catch (error) {
+            console.error('Failed to delete custom sound:', error);
+            showToast('error', 'Error', error.message || 'Failed to delete custom sound');
+        }
+    });
     document.getElementById('config-wait-until-found').addEventListener('change', (e) => {
         action.waitUntilFound = e.target.checked;
         const pollField = document.getElementById('poll-interval-field');
@@ -3989,8 +4524,8 @@ async function renderImageDetectConfig(configBody, action, index, nameFieldHtml 
         }
         save();
     });
-    document.getElementById('config-poll-interval').addEventListener('change', (e) => {
-        action.pollInterval = Math.max(100, parseInt(e.target.value) || 500);
+    document.getElementById('config-poll-interval').addEventListener('change', () => {
+        action.pollInterval = Math.max(100, readDurationMs('config-poll-interval') ?? 500);
         save();
     });
     document.getElementById('config-fail-not-found').addEventListener('change', (e) => {
@@ -4044,11 +4579,12 @@ async function renderImageDetectConfig(configBody, action, index, nameFieldHtml 
         updateImagePreview(action.imageId);
     }
 }
-
-// ===== editor-config-pixel.ts =====
 /**
  * Render Pixel Detect action config
  */
+
+// ===== editor-config-pixel.ts =====
+/* Editor config — pixel-detect action + color helpers (ported from WIP). Shares the editor global scope. */
 function renderPixelDetectConfig(configBody, action, index, nameFieldHtml = '', save) {
     if (!save)
         save = () => updateAction(index, action);
@@ -4096,6 +4632,7 @@ function renderPixelDetectConfig(configBody, action, index, nameFieldHtml = '', 
         Continue on error
       </label>
     </div>
+    ${renderVariableAssignmentField(action, 'When color is found')}
   `;
     const nameInput = document.getElementById('config-action-name');
     if (nameInput) {
@@ -4104,6 +4641,7 @@ function renderPixelDetectConfig(configBody, action, index, nameFieldHtml = '', 
             save();
         });
     }
+    bindVariableAssignmentField(action, save);
     const updateColorFromHex = (hex) => {
         action.color = hexToRgb(hex);
         document.getElementById('color-preview').style.background = hex;
@@ -4178,6 +4716,10 @@ function hexToRgb(hex) {
         b: parseInt(result[3], 16)
     } : { r: 255, g: 0, b: 0 };
 }
+/**
+ * Create a searchable image picker with folder hierarchy inside a container element.
+ * Returns a controller: { onChange(cb), setValue(id), getValue(), destroy() }
+ */
 
 // ===== editor-config-update.ts =====
 /**

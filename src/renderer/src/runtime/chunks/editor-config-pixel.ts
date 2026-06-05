@@ -1,6 +1,5 @@
-/**
- * Render Pixel Detect action config
- */
+/* Editor config — pixel-detect action + color helpers (ported from WIP). Shares the editor global scope. */
+
 function renderPixelDetectConfig(configBody, action, index, nameFieldHtml = '', save) {
   if (!save) save = () => updateAction(index, action);
   action.color = action.color || { r: 255, g: 0, b: 0 };
@@ -48,6 +47,7 @@ function renderPixelDetectConfig(configBody, action, index, nameFieldHtml = '', 
         Continue on error
       </label>
     </div>
+    ${renderVariableAssignmentField(action, 'When color is found')}
   `;
 
   const nameInput = document.getElementById('config-action-name');
@@ -57,6 +57,7 @@ function renderPixelDetectConfig(configBody, action, index, nameFieldHtml = '', 
       save();
     });
   }
+  bindVariableAssignmentField(action, save);
 
   const updateColorFromHex = (hex) => {
     action.color = hexToRgb(hex);
@@ -141,3 +142,7 @@ function hexToRgb(hex) {
   } : { r: 255, g: 0, b: 0 };
 }
 
+/**
+ * Create a searchable image picker with folder hierarchy inside a container element.
+ * Returns a controller: { onChange(cb), setValue(id), getValue(), destroy() }
+ */
