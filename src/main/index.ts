@@ -52,7 +52,7 @@ function createWindow() {
     // (min/max/close) as an overlay so Snap Layouts keep working. Colors blend
     // into the custom titlebar so it reads as borderless.
     titleBarOverlay: process.platform === 'win32'
-      ? { color: '#0f1119', symbolColor: '#c8e9f2', height: 52 }
+      ? { color: '#0f1119', symbolColor: '#c8e9f2', height: 56 }
       : false,
     frame: process.platform !== 'darwin',
     webPreferences: {

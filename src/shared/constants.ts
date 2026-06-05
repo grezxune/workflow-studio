@@ -91,6 +91,7 @@ export const IPC_CHANNELS = {
   EXPORT_WORKFLOW: 'workflow:export',
   IMPORT_WORKFLOW: 'workflow:import',
   GET_RECENT_WORKFLOWS: 'workflow:get-recent',
+  GET_RECENT_RUN_WORKFLOWS: 'workflow:get-recent-runs',
 
   AI_GENERATE_WORKFLOW: 'ai:generate-workflow',
   AI_GET_SUPPORTED_GAMES: 'ai:get-supported-games',
@@ -101,6 +102,11 @@ export const IPC_CHANNELS = {
   RESUME_EXECUTION: 'execution:resume',
   EMERGENCY_STOP: 'execution:emergency-stop',
   GET_EXECUTION_STATUS: 'execution:get-status',
+  GET_EXECUTION_HISTORY: 'analytics:get-execution-history',
+  IMPORT_EXECUTION_HISTORY: 'analytics:import-execution-history',
+  CLEAR_EXECUTION_HISTORY: 'analytics:clear-execution-history',
+  GET_WORKFLOW_ANALYTICS: 'analytics:get-workflow',
+  GET_OVERALL_ANALYTICS: 'analytics:get-overall',
 
   EXECUTION_STARTED: 'execution:started',
   EXECUTION_COMPLETED: 'execution:completed',
@@ -109,6 +115,8 @@ export const IPC_CHANNELS = {
   EXECUTION_PAUSED: 'execution:paused',
   EXECUTION_RESUMED: 'execution:resumed',
   EXECUTION_STATE_CHANGED: 'execution:state-changed',
+  EXECUTION_VARIABLES_SYNC: 'execution:variables-sync',
+  EXECUTION_VARIABLE_CHANGED: 'execution:variable-changed',
 
   ACTION_STARTED: 'action:started',
   ACTION_COMPLETED: 'action:completed',
@@ -136,6 +144,11 @@ export const IPC_CHANNELS = {
   FIND_PIXEL: 'detection:find-pixel',
   GET_PIXEL_COLOR: 'detection:get-pixel-color',
   GET_SCREEN_SIZE: 'detection:get-screen-size',
+  GET_SYSTEM_SOUNDS: 'audio:get-system-sounds',
+  PLAY_SYSTEM_SOUND: 'audio:play-system-sound',
+  SPEAK_TEXT: 'audio:speak-text',
+  IMPORT_CUSTOM_SOUND: 'audio:import-custom-sound',
+  DELETE_CUSTOM_SOUND: 'audio:delete-custom-sound',
 
   GET_IMAGES: 'images:get-all',
   DELETE_IMAGE: 'images:delete',
@@ -192,6 +205,11 @@ export const DEFAULT_SETTINGS = {
     confidence: 0.9,
     method: DETECTION_METHODS.TEMPLATE
   },
+  maxRunTime: {
+    enabled: true,
+    ms: 120 * 60 * 1000
+  },
+  floatingBarBounds: null,
   ai: {
     openRouterApiKey: '',
     preferredModel: 'codex-5.3'
@@ -236,10 +254,10 @@ export const ACTION_TYPE_META = {
     description: 'Repeat a set of actions'
   },
   [ACTION_TYPES.IMAGE_DETECT]: {
-    name: 'Find Image',
+    name: 'Image Detect',
     icon: 'photo',
     color: 'indigo',
-    description: 'Detect an image on screen'
+    description: 'Detect when an image is present or missing on screen'
   },
   [ACTION_TYPES.PIXEL_DETECT]: {
     name: 'Find Pixel',

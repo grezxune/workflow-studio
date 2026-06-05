@@ -170,7 +170,7 @@ Action schema:
 - wait: { type: "wait", duration: { min:number, max:number }, name?: string }
 - conditional: { type: "conditional", condition: { type:"image_present"|"image_absent"|"pixel_match", imageId?:string, confidence?:number, color?:{r:number,g:number,b:number}, tolerance?:number }, thenActions: Action[], elseActions: Action[] }
 - loop: { type: "loop", count?: number, infinite?: boolean, actions: Action[], delay: { min:number, max:number }, name?: string }
-- image_detect: { type: "image_detect", imageId?: string, confidence?: number, failOnNotFound?: boolean, name?: string }
+- image_detect: { type: "image_detect", detectMode?: "present"|"absent", imageId?: string, confidence?: number, waitUntilFound?: boolean, pollInterval?: number, failOnNotFound?: boolean, name?: string } (use detectMode "absent" to detect when something disappears; pair with waitUntilFound to poll until condition is met)
 - pixel_detect: { type: "pixel_detect", color: {r:number,g:number,b:number}, tolerance?: number, failOnNotFound?: boolean, name?: string }
 
 Response schema:

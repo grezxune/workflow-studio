@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' file: data:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' file: data:;">
   <title>Workflow Studio</title>
   <link rel="stylesheet" href="styles/main.css">
   <link rel="stylesheet" href="styles/components.css">
@@ -36,6 +36,15 @@
               <path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>
             </svg>
             Workflows
+          </button>
+          <button class="nav-tab" data-view="analytics">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 3v18h18"/>
+              <rect x="7" y="12" width="3" height="5"/>
+              <rect x="12" y="8" width="3" height="9"/>
+              <rect x="17" y="5" width="3" height="12"/>
+            </svg>
+            Analytics
           </button>
           <button class="nav-tab" data-view="editor">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -75,7 +84,7 @@
       </div>
     </header>
 
-    <!-- Collapsed-nav flyout: backdrop + drawer (drawer populated from titlebar nav) -->
+    <!-- Collapsed-nav flyout: backdrop + drawer (drawer is populated from the titlebar nav) -->
     <div class="nav-backdrop" id="nav-backdrop"></div>
     <nav class="nav-drawer" id="nav-drawer" aria-label="Primary navigation"></nav>
 
@@ -133,10 +142,18 @@
 
         <div class="workflows-content">
           <!-- Recent Workflows -->
-          <div class="recent-workflows" id="recent-workflows">
-            <h3>Recent</h3>
-            <div class="recent-list" id="recent-workflows-list">
-              <!-- Recent workflow items will be inserted here -->
+          <div class="recent-dashboard" id="recent-workflows">
+            <div class="recent-workflows recent-ran-workflows">
+              <h3>Recently Ran</h3>
+              <div class="recent-list" id="recent-ran-workflows-list">
+                <!-- Recently run workflow items will be inserted here -->
+              </div>
+            </div>
+            <div class="recent-workflows">
+              <h3>Recently Added</h3>
+              <div class="recent-list" id="recent-added-workflows-list">
+                <!-- Recently added workflow items will be inserted here -->
+              </div>
             </div>
           </div>
 
@@ -166,6 +183,50 @@
                 Create Your First Workflow
               </button>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Analytics View -->
+      <section class="view" id="view-analytics">
+        <div class="view-header">
+          <h1>Analytics</h1>
+          <div class="view-actions">
+            <button class="btn btn-secondary" id="btn-refresh-analytics" title="Refresh analytics">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <div class="analytics-content">
+          <div class="analytics-summary-grid" id="analytics-summary-grid"></div>
+
+          <div class="analytics-section">
+            <div class="analytics-section-header">
+              <h3>Workflow Performance</h3>
+            </div>
+            <div class="analytics-table" id="analytics-workflow-table"></div>
+          </div>
+
+          <div class="analytics-section">
+            <div class="analytics-section-header">
+              <h3>Workflow Detail</h3>
+              <select id="analytics-workflow-select" class="analytics-workflow-select">
+                <option value="">Select workflow...</option>
+              </select>
+            </div>
+            <div id="workflow-analytics-detail"></div>
+          </div>
+
+          <div class="analytics-section">
+            <div class="analytics-section-header">
+              <h3>Recent Runs</h3>
+            </div>
+            <div class="analytics-table" id="analytics-recent-runs"></div>
           </div>
         </div>
       </section>
@@ -209,64 +270,77 @@
                 <input type="text" class="workflow-name-input" id="workflow-name" placeholder="Workflow Name" value="Untitled Workflow">
               </div>
               <div class="toolbar-actions">
-                <button class="btn btn-icon" id="btn-quick-record" title="Quick Record Mode (R)">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <circle cx="12" cy="12" r="3" fill="currentColor"/>
-                  </svg>
-                </button>
-                <button class="btn btn-icon" id="btn-preview-overlay" title="Preview Targets Overlay (P)">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                  </svg>
-                </button>
-                <button class="btn btn-icon" id="btn-toggle-view" title="Toggle Compact View (V)">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="icon-list-view">
-                    <line x1="8" y1="6" x2="21" y2="6"/>
-                    <line x1="8" y1="12" x2="21" y2="12"/>
-                    <line x1="8" y1="18" x2="21" y2="18"/>
-                    <line x1="3" y1="6" x2="3.01" y2="6"/>
-                    <line x1="3" y1="12" x2="3.01" y2="12"/>
-                    <line x1="3" y1="18" x2="3.01" y2="18"/>
-                  </svg>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="icon-grid-view" style="display:none">
-                    <rect x="3" y="3" width="7" height="7"/>
-                    <rect x="14" y="3" width="7" height="7"/>
-                    <rect x="14" y="14" width="7" height="7"/>
-                    <rect x="3" y="14" width="7" height="7"/>
-                  </svg>
-                </button>
-                <button class="btn btn-icon" id="btn-save-workflow" title="Save Workflow (Ctrl+S)">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                    <polyline points="17 21 17 13 7 13 7 21"/>
-                    <polyline points="7 3 7 8 15 8"/>
-                  </svg>
-                </button>
-                <button class="btn btn-icon" id="btn-toggle-ai" title="Show AI Draft Panel" aria-expanded="false">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 2l2.4 5.1L20 9l-4 3.9L17 18l-5-2.6L7 18l1-5.1L4 9l5.6-1.9L12 2z"/>
-                    <polyline points="8 14 12 10 16 14"/>
-                  </svg>
-                </button>
-                <div class="toolbar-divider"></div>
-                <button class="btn btn-icon" id="btn-dry-run" title="Dry Run (F9)">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <polyline points="12 6 12 12 16 14"/>
-                  </svg>
-                </button>
-                <button class="btn btn-icon" id="btn-run" title="Run (F5)">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polygon points="5 3 19 12 5 21 5 3"/>
-                  </svg>
-                </button>
-                <button class="btn btn-icon btn-danger hidden" id="btn-stop" title="Stop (F7)">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                  </svg>
-                </button>
+                <div class="toolbar-tools" role="group" aria-label="Editor tools">
+                  <button class="btn btn-icon" id="btn-quick-record" title="Quick Record Mode (R)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"/>
+                      <circle cx="12" cy="12" r="3" fill="currentColor"/>
+                    </svg>
+                  </button>
+                  <button class="btn btn-icon" id="btn-preview-overlay" title="Preview Targets Overlay (P)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                      <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                  </button>
+                  <button class="btn btn-icon" id="btn-toggle-view" title="Toggle Compact View (V)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="icon-list-view">
+                      <line x1="8" y1="6" x2="21" y2="6"/>
+                      <line x1="8" y1="12" x2="21" y2="12"/>
+                      <line x1="8" y1="18" x2="21" y2="18"/>
+                      <line x1="3" y1="6" x2="3.01" y2="6"/>
+                      <line x1="3" y1="12" x2="3.01" y2="12"/>
+                      <line x1="3" y1="18" x2="3.01" y2="18"/>
+                    </svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="icon-grid-view" style="display:none">
+                      <rect x="3" y="3" width="7" height="7"/>
+                      <rect x="14" y="3" width="7" height="7"/>
+                      <rect x="14" y="14" width="7" height="7"/>
+                      <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                  </button>
+                  <button class="btn btn-icon" id="btn-toggle-ai" title="Show AI Draft Panel" aria-expanded="false">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12 2l2.4 5.1L20 9l-4 3.9L17 18l-5-2.6L7 18l1-5.1L4 9l5.6-1.9L12 2z"/>
+                      <polyline points="8 14 12 10 16 14"/>
+                    </svg>
+                  </button>
+                  <button class="btn btn-icon btn-variables" id="btn-workflow-variables" title="Workflow Variables — optional flags that flash the run screen">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M7 4H6a2 2 0 0 0-2 2v3a2 2 0 0 1-2 2 2 2 0 0 1 2 2v3a2 2 0 0 0 2 2h1"/>
+                      <path d="M17 4h1a2 2 0 0 1 2 2v3a2 2 0 0 0 2 2 2 2 0 0 0-2 2v3a2 2 0 0 1-2 2h-1"/>
+                    </svg>
+                    <span class="toolbar-badge hidden" id="workflow-variables-badge">0</span>
+                  </button>
+                  <button class="btn btn-icon" id="btn-save-workflow" title="Save Workflow (Ctrl+S)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                      <polyline points="17 21 17 13 7 13 7 21"/>
+                      <polyline points="7 3 7 8 15 8"/>
+                    </svg>
+                  </button>
+                </div>
+                <div class="run-group">
+                  <button class="btn btn-test" id="btn-dry-run" title="Test Run — simulate the steps without moving your real mouse or keyboard (F9)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"/>
+                      <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    Test
+                  </button>
+                  <button class="btn btn-run" id="btn-run" title="Run Workflow (F5)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                    Run
+                  </button>
+                  <button class="btn btn-stop hidden" id="btn-stop" title="Stop (F7)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    </svg>
+                    Stop
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -323,7 +397,8 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                   <path d="M12 5v14M5 12h14"/>
                 </svg>
-                <p>Drag actions here to build your workflow</p>
+                <p>Drag an action from the left to start building</p>
+                <span class="empty-sequence-hint">or double-click any action · then press the green Run button</span>
               </div>
             </div>
 
@@ -336,10 +411,18 @@
                 <label>Loop:</label>
                 <input type="number" id="loop-count" min="1" max="9999" value="1">
                 <label>times with</label>
-                <input type="number" id="loop-delay-min" min="0" max="60000" value="500">
-                <span>-</span>
-                <input type="number" id="loop-delay-max" min="0" max="60000" value="1000">
-                <label>ms delay</label>
+                <div class="duration-input duration-input--range" data-duration>
+                  <input type="number" id="loop-delay-min" class="duration-input-value" min="0" step="any" value="500">
+                  <span class="duration-input-dash">-</span>
+                  <input type="number" id="loop-delay-max" class="duration-input-value" min="0" step="any" value="1000">
+                  <select class="duration-input-unit" data-prev-unit="ms" aria-label="Time unit">
+                    <option value="ms" selected>ms</option>
+                    <option value="s">sec</option>
+                    <option value="min">min</option>
+                    <option value="h">hr</option>
+                  </select>
+                </div>
+                <label>delay</label>
               </div>
             </div>
           </div>
@@ -543,13 +626,42 @@
             </div>
 
             <div class="settings-section">
+              <h2>Execution</h2>
+              <div class="setting-item">
+                <div class="toggle-group">
+                  <input type="checkbox" id="max-run-time-enabled">
+                  <label for="max-run-time-enabled">Limit maximum run time</label>
+                </div>
+                <p class="setting-hint">When a workflow runs without a scheduled stop time, automatically stop it after about this long. The actual limit is randomized by ±30 minutes each run.</p>
+              </div>
+              <div class="setting-item">
+                <label for="max-run-time-value">Max run time</label>
+                <div class="duration-input" data-duration>
+                  <input type="number" id="max-run-time-value" class="duration-input-value" min="0" step="any" value="120">
+                  <select class="duration-input-unit" data-prev-unit="min" aria-label="Time unit">
+                    <option value="ms">ms</option>
+                    <option value="s">sec</option>
+                    <option value="min" selected>min</option>
+                    <option value="h">hr</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-section">
               <h2>Typing</h2>
               <div class="setting-item">
-                <label>Speed (ms per character)</label>
-                <div class="range-inputs">
-                  <input type="number" id="typing-speed-min" min="10" max="500" value="50">
-                  <span>to</span>
-                  <input type="number" id="typing-speed-max" min="10" max="500" value="150">
+                <label>Speed (per character)</label>
+                <div class="duration-input duration-input--range" data-duration>
+                  <input type="number" id="typing-speed-min" class="duration-input-value" min="0" step="any" value="50">
+                  <span class="duration-input-dash">to</span>
+                  <input type="number" id="typing-speed-max" class="duration-input-value" min="0" step="any" value="150">
+                  <select class="duration-input-unit" data-prev-unit="ms" aria-label="Time unit">
+                    <option value="ms" selected>ms</option>
+                    <option value="s">sec</option>
+                    <option value="min">min</option>
+                    <option value="h">hr</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -557,8 +669,16 @@
             <div class="settings-section">
               <h2>Mouse Movement</h2>
               <div class="setting-item">
-                <label>Movement Duration (ms)</label>
-                <input type="number" id="mouse-move-duration" min="0" max="2000" value="250">
+                <label for="mouse-move-duration">Movement Duration</label>
+                <div class="duration-input" data-duration>
+                  <input type="number" id="mouse-move-duration" class="duration-input-value" min="0" step="any" value="250">
+                  <select class="duration-input-unit" data-prev-unit="ms" aria-label="Time unit">
+                    <option value="ms" selected>ms</option>
+                    <option value="s">sec</option>
+                    <option value="min">min</option>
+                    <option value="h">hr</option>
+                  </select>
+                </div>
                 <p class="setting-hint">How long mouse movements take (0 = instant)</p>
               </div>
               <div class="setting-item">
@@ -603,18 +723,6 @@
               <p class="setting-hint" id="update-status-hint">Updates are checked automatically every 30 minutes</p>
             </div>
 
-            <div class="settings-section full-width">
-              <h2>Execution History</h2>
-              <div class="history-panel">
-                <div class="history-header">
-                  <span class="setting-hint">Recent workflow executions</span>
-                  <button class="btn btn-secondary btn-sm" id="btn-clear-history">Clear</button>
-                </div>
-                <div class="history-list" id="history-list">
-                  <!-- Execution history items will be inserted here -->
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </section>
@@ -636,6 +744,7 @@
           <span id="execution-progress-text">Loop 1/1 - Action 0/0</span>
         </div>
         <p class="execution-action" id="execution-action">Initializing...</p>
+        <div class="execution-variables hidden" id="execution-variables"></div>
         <div class="wait-countdown hidden" id="wait-countdown">
           <div class="wait-countdown-bar">
             <div class="wait-countdown-fill" id="wait-countdown-fill"></div>
@@ -651,10 +760,13 @@
               <circle cx="12" cy="12" r="10"/>
               <polyline points="12 6 12 12 16 14"/>
             </svg>
-            <span>Auto-stop at</span>
+            <span>Auto-stop</span>
+            <span class="scheduled-stop-hint">random time in range</span>
           </div>
           <div class="scheduled-stop-controls" id="scheduled-stop-controls">
-            <input type="time" id="scheduled-stop-time" class="scheduled-stop-input" step="60">
+            <input type="time" id="scheduled-stop-from" class="scheduled-stop-input" step="60" aria-label="Earliest stop time">
+            <span class="scheduled-stop-dash">–</span>
+            <input type="time" id="scheduled-stop-to" class="scheduled-stop-input" step="60" aria-label="Latest stop time">
             <button class="btn btn-sm btn-secondary" id="btn-set-stop-time">Set</button>
             <button class="btn btn-sm btn-ghost hidden" id="btn-clear-stop-time">Clear</button>
           </div>
@@ -665,9 +777,12 @@
             </select>
           </div>
           <div class="scheduled-stop-active hidden" id="scheduled-stop-active">
-            <div class="scheduled-stop-countdown" id="scheduled-stop-countdown"></div>
-            <div class="scheduled-stop-then-info" id="scheduled-stop-then-info"></div>
-            <button class="btn btn-sm btn-ghost" id="btn-clear-stop-time-active">
+            <div class="scheduled-stop-active-main">
+              <div class="scheduled-stop-countdown" id="scheduled-stop-countdown"></div>
+              <div class="scheduled-stop-picked" id="scheduled-stop-picked"></div>
+              <div class="scheduled-stop-then-info" id="scheduled-stop-then-info"></div>
+            </div>
+            <button class="btn btn-sm btn-ghost" id="btn-clear-stop-time-active" title="Cancel auto-stop">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px">
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
               </svg>
@@ -725,14 +840,7 @@
     <!-- Toast Container -->
     <div class="toast-container" id="toast-container"></div>
   </div>
-
-  <script src="js/app.js"></script>
-  <script src="js/workflows.js"></script>
-  <script src="js/editor.js"></script>
-  <script src="js/images.js"></script>
-  <script src="js/settings.js"></script>
-  <script src="js/hotkeys.js"></script>
-  <script src="js/execution.js"></script>
-  <script src="js/quick-record.js"></script>
+  <!-- Renderer logic is loaded by the React host (App.tsx) via the generated
+       runtime bundle; no per-module <script> tags here. -->
 </body>
 </html>
