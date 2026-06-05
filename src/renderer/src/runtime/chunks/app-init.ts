@@ -31,11 +31,20 @@ let mainProcessBridgeInitialized = false;
  * Initialize the application
  */
 async function initApp() {
+  // Tag the root element with the platform so CSS can adapt the titlebar
+  // (macOS traffic-light spacing vs. Windows caption-overlay spacing).
+  document.documentElement.classList.add(
+    window.platform?.isMac ? 'platform-mac'
+      : window.platform?.isWindows ? 'platform-win'
+      : 'platform-linux'
+  );
+
   // Cache DOM elements
   cacheElements();
 
   // Setup navigation
   setupNavigation();
+  setupResponsiveNav();
   setupMainProcessBridge();
 
   // Initialize views first (sets up DOM references)
@@ -120,6 +129,97 @@ function setupNavigation() {
 }
 
 /**
+ * Collapse the header nav into a left flyout drawer when the titlebar is too
+ * narrow to fit the logo, tabs and status pill side by side. Keeps the status
+ * pill from being pushed off-screen on small windows / low-res displays.
+ */
+function setupResponsiveNav() {
+  const titlebarContent = document.querySelector('.titlebar-content');
+  const navToggle = document.getElementById('nav-toggle');
+  const navBackdrop = document.getElementById('nav-backdrop');
+  const navDrawer = document.getElementById('nav-drawer');
+  const logo = document.querySelector('.titlebar .logo');
+  const actions = document.querySelector('.titlebar-actions');
+  if (!titlebarContent || !navToggle || !elements.navTabs) return;
+
+  // Populate the flyout drawer with clones of the titlebar nav items, so the
+  // shell markup stays the single source of truth. Clones keep their data-view,
+  // so navigateTo()'s active-class sweep and the click handler keep both in sync.
+  if (navDrawer && !navDrawer.childElementCount) {
+    elements.navTabs.querySelectorAll('.nav-tab').forEach((tab) => {
+      navDrawer.appendChild(tab.cloneNode(true));
+    });
+    navDrawer.addEventListener('click', (e) => {
+      const tab = e.target.closest('.nav-tab');
+      if (tab) navigateTo(tab.dataset.view);
+    });
+  }
+
+  // Intrinsic widths of the header blocks, measured once while the nav is
+  // expanded. nav-tabs has flex-shrink:0, so scrollWidth is its un-squished width.
+  let metrics: any = null;
+  const measure = () => {
+    if (metrics) return;
+    if (document.body.classList.contains('nav-collapsed')) return;
+    metrics = {
+      logo: logo ? logo.getBoundingClientRect().width : 0,
+      nav: elements.navTabs.scrollWidth,
+      actions: actions ? actions.getBoundingClientRect().width : 0
+    };
+  };
+
+  const updateMode = () => {
+    measure();
+    if (!metrics) return;
+    // logo + tabs + pill + (nav margin + content padding + breathing room)
+    const needed = metrics.logo + metrics.nav + metrics.actions + 132;
+    const collapse = titlebarContent.clientWidth < needed;
+    document.body.classList.toggle('nav-collapsed', collapse);
+    if (!collapse) closeNavDrawer();
+  };
+
+  navToggle.addEventListener('click', () => {
+    if (document.body.classList.contains('nav-open')) closeNavDrawer();
+    else openNavDrawer();
+  });
+  if (navBackdrop) navBackdrop.addEventListener('click', closeNavDrawer);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.body.classList.contains('nav-open')) {
+      closeNavDrawer();
+    }
+  });
+
+  // Classify synchronously (layout is available even while the window is still
+  // hidden) so the correct mode is set on first paint — rAF wouldn't fire yet.
+  // Suppress the drawer transition during this first pass so it never flashes,
+  // then re-enable it after the first painted frame.
+  document.body.classList.add('nav-no-anim');
+  updateMode();
+  if (window.ResizeObserver) {
+    new ResizeObserver(updateMode).observe(titlebarContent);
+  } else {
+    window.addEventListener('resize', updateMode);
+  }
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    document.body.classList.remove('nav-no-anim');
+  }));
+}
+
+/** Open the collapsed-nav flyout drawer. */
+function openNavDrawer() {
+  document.body.classList.add('nav-open');
+  const toggle = document.getElementById('nav-toggle');
+  if (toggle) toggle.setAttribute('aria-expanded', 'true');
+}
+
+/** Close the collapsed-nav flyout drawer. */
+function closeNavDrawer() {
+  document.body.classList.remove('nav-open');
+  const toggle = document.getElementById('nav-toggle');
+  if (toggle) toggle.setAttribute('aria-expanded', 'false');
+}
+
+/**
  * Bridge native menu actions/navigation from preload into renderer runtime handlers.
  */
 function setupMainProcessBridge() {
@@ -179,6 +279,9 @@ function setupMainProcessBridge() {
  * Navigate to a view
  */
 function navigateTo(viewName) {
+  // Always dismiss the collapsed-nav flyout on any navigation attempt.
+  closeNavDrawer();
+
   if (!elements.views[viewName]) return;
 
   // If navigating to editor with no workflow loaded, auto-create one

@@ -159,14 +159,24 @@ body {
   padding: 0 var(--space-4);
   position: relative;
   z-index: 1;
+  /* Shrink to the area the OS leaves free of the Windows caption overlay
+     (min/max/close). Falls back to full width where there's no overlay. */
+  width: env(titlebar-area-width, 100%);
 }
 
 .logo {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding-left: 70px; /* Space for macOS traffic lights */
+  flex-shrink: 0;
   -webkit-app-region: no-drag;
+}
+
+/* Reserve space only on macOS, where the traffic lights sit top-left, applied
+   to the content row so the first item (hamburger or logo) clears them.
+   On Windows the caption buttons are top-right — no left inset needed. */
+.platform-mac .titlebar-content {
+  padding-left: 70px;
 }
 
 .logo-icon {
@@ -186,6 +196,7 @@ body {
   display: flex;
   gap: var(--space-1);
   margin-left: var(--space-8);
+  flex-shrink: 0;
   -webkit-app-region: no-drag;
 }
 
@@ -225,12 +236,129 @@ body {
   color: white;
 }
 
+/* ============================================================
+   Responsive nav — collapse tabs into a left flyout drawer when
+   the titlebar is too narrow to fit logo + tabs + status pill.
+   ============================================================ */
+
+/* Hamburger toggle — hidden until the nav collapses */
+.nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-right: var(--space-2);
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+  transition: all var(--transition-fast);
+}
+
+.nav-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+
+.nav-toggle:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* Dim the app behind the open drawer */
+.nav-backdrop {
+  position: fixed;
+  inset: var(--titlebar-height) 0 0 0;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.22s ease, visibility 0.22s ease;
+  z-index: 40;
+}
+
+/* Flyout drawer — rendered at the #app root (sibling of the backdrop) so it is
+   never trapped in the titlebar's stacking context. Populated by cloning the
+   titlebar nav items, keeping the shell markup the single source of truth. */
+.nav-drawer {
+  position: fixed;
+  top: var(--titlebar-height);
+  left: 0;
+  bottom: 0;
+  width: min(280px, 80vw);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  box-shadow: var(--shadow-xl);
+  overflow-y: auto;
+  transform: translateX(-100%);
+  visibility: hidden;
+  /* slide out, then drop from the a11y tree once the slide completes */
+  transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s linear 0.24s;
+  z-index: 50;
+}
+
+/* --- Collapsed mode --- */
+body.nav-collapsed .nav-toggle {
+  display: inline-flex;
+}
+
+body.nav-collapsed .nav-tabs {
+  display: none;
+}
+
+body.nav-open .nav-drawer {
+  transform: translateX(0);
+  visibility: visible;
+  transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s;
+}
+
+body.nav-open .nav-backdrop {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Drawer items: full-width vertical rows */
+.nav-drawer .nav-tab {
+  width: 100%;
+  justify-content: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+
+.nav-drawer .nav-tab svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Suppress the slide during the initial (synchronous) classification and until
+   the first painted frame, so the drawer never flashes in/out on load. */
+body.nav-no-anim .nav-drawer,
+body.nav-no-anim .nav-backdrop {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-drawer,
+  .nav-backdrop {
+    transition: none;
+  }
+}
+
 /* Titlebar Actions */
 .titlebar-actions {
   margin-left: auto;
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  flex-shrink: 0;
   -webkit-app-region: no-drag;
 }
 

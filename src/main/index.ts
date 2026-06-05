@@ -45,7 +45,15 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 700,
     backgroundColor: '#0a0a0a',
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset'
+      : process.platform === 'win32' ? 'hidden'
+      : 'default',
+    // Windows: hide the native title bar but keep OS-drawn caption buttons
+    // (min/max/close) as an overlay so Snap Layouts keep working. Colors blend
+    // into the custom titlebar so it reads as borderless.
+    titleBarOverlay: process.platform === 'win32'
+      ? { color: '#0f1119', symbolColor: '#c8e9f2', height: 52 }
+      : false,
     frame: process.platform !== 'darwin',
     webPreferences: {
       preload: getPreloadPath(),
@@ -63,13 +71,21 @@ function createWindow() {
 
   void loadRendererPage(mainWindow, 'index.html');
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-
-    if (process.env.ELECTRON_RENDERER_URL) {
+  const revealWindow = () => {
+    if (!mainWindow) return;
+    if (!mainWindow.isVisible()) {
+      mainWindow.show();
+    }
+    if (process.env.ELECTRON_RENDERER_URL && !mainWindow.webContents.isDevToolsOpened()) {
       mainWindow.webContents.openDevTools();
     }
-  });
+  };
+
+  mainWindow.once('ready-to-show', revealWindow);
+  // Fallback: with titleBarStyle 'hidden' + titleBarOverlay on Windows,
+  // 'ready-to-show' can fire late or be skipped, leaving the window hidden
+  // (show: false). 'did-finish-load' reliably fires once the renderer loads.
+  mainWindow.webContents.once('did-finish-load', revealWindow);
 
   mainWindow.on('close', (event) => {
     if (!isQuitting && process.platform === 'darwin') {

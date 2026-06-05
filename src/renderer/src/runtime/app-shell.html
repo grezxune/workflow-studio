@@ -14,6 +14,14 @@
     <header class="titlebar" id="titlebar">
       <div class="titlebar-drag"></div>
       <div class="titlebar-content">
+        <button class="nav-toggle" id="nav-toggle" type="button"
+                aria-label="Open navigation menu" aria-expanded="false" aria-controls="nav-drawer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
         <div class="logo">
           <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 2L2 7l10 5 10-5-10-5z"/>
@@ -66,6 +74,10 @@
         </div>
       </div>
     </header>
+
+    <!-- Collapsed-nav flyout: backdrop + drawer (drawer populated from titlebar nav) -->
+    <div class="nav-backdrop" id="nav-backdrop"></div>
+    <nav class="nav-drawer" id="nav-drawer" aria-label="Primary navigation"></nav>
 
     <!-- Update Banner -->
     <div class="update-banner hidden" id="update-banner">
