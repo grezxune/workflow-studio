@@ -1338,27 +1338,24 @@ function analyticsEscapeHtml(value) {
  */
 let workflowGrid = null;
 let emptyWorkflows = null;
-let recentContainer = null;
-let historyList = null;
-// Execution history storage
-let executionHistory = [];
-const MAX_HISTORY = 50;
+let recentRunContainer = null;
+let recentAddedContainer = null;
 /**
  * Initialize workflows view
  */
 function initWorkflowsView() {
     workflowGrid = document.getElementById('workflow-grid');
     emptyWorkflows = document.getElementById('empty-workflows');
-    recentContainer = document.getElementById('recent-workflows-list');
-    historyList = document.getElementById('history-list');
+    recentRunContainer = document.getElementById('recent-ran-workflows-list');
+    recentAddedContainer = document.getElementById('recent-added-workflows-list');
     // New workflow buttons
     document.getElementById('btn-new-workflow').addEventListener('click', createNewWorkflow);
     document.getElementById('btn-new-workflow-empty')?.addEventListener('click', createNewWorkflow);
     // Import/Export buttons
     document.getElementById('btn-import-workflow')?.addEventListener('click', importWorkflow);
     document.getElementById('btn-export-all')?.addEventListener('click', exportAllWorkflows);
-    // Load execution history from storage
-    loadExecutionHistory();
+    // Migrate any execution history kept by older versions in localStorage
+    migrateLegacyExecutionHistory();
 }
 /**
  * Render the workflow list
@@ -1697,112 +1694,115 @@ async function exportAllWorkflows() {
  * Render recent workflows
  */
 async function renderRecentWorkflows() {
-    if (!recentContainer)
+    if (!recentRunContainer && !recentAddedContainer)
         return;
     try {
-        const recent = await window.workflowAPI.getRecentWorkflows();
-        if (!recent || recent.length === 0) {
-            recentContainer.innerHTML = '<p style="color: var(--text-tertiary); font-size: var(--text-sm);">No recent workflows</p>';
-            return;
-        }
-        recentContainer.innerHTML = recent.slice(0, 5).map(workflow => `
-      <div class="recent-item" data-id="${workflow.id}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <polyline points="12 6 12 12 16 14"/>
-        </svg>
-        <span>${escapeHtml(workflow.name)}</span>
-      </div>
-    `).join('');
-        // Add click handlers
-        recentContainer.querySelectorAll('.recent-item').forEach(item => {
-            item.addEventListener('click', () => {
-                openWorkflowInEditor(item.dataset.id);
-            });
+        const [recentRan, recentAdded] = await Promise.all([
+            window.workflowAPI.getRecentRunWorkflows?.() || [],
+            window.workflowAPI.getRecentWorkflows()
+        ]);
+        renderRecentWorkflowList(recentRunContainer, recentRan, 'No workflow runs yet', workflow => {
+            const duration = formatDurationShort(workflow.lastDurationMs);
+            const ranAt = workflow.lastRunAt ? formatTimeAgo(workflow.lastRunAt) : '';
+            return [duration, ranAt].filter(Boolean).join(' - ');
+        });
+        renderRecentWorkflowList(recentAddedContainer, recentAdded, 'No workflows added yet', workflow => {
+            return workflow.createdAt ? formatTimeAgo(workflow.createdAt) : '';
         });
     }
     catch (error) {
         console.error('Failed to load recent workflows:', error);
     }
 }
+function renderRecentWorkflowList(container, workflows, emptyMessage, metaFormatter) {
+    if (!container)
+        return;
+    if (!workflows || workflows.length === 0) {
+        container.innerHTML = `<p class="recent-empty">${emptyMessage}</p>`;
+        return;
+    }
+    container.innerHTML = workflows.slice(0, 5).map(workflow => {
+        const meta = metaFormatter ? metaFormatter(workflow) : '';
+        return `
+      <div class="recent-item" data-id="${workflow.id}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 6 12 12 16 14"/>
+        </svg>
+        <span class="recent-item-content">
+          <span class="recent-item-name">${escapeHtml(workflow.name)}</span>
+          ${meta ? `<span class="recent-item-meta">${escapeHtml(meta)}</span>` : ''}
+        </span>
+      </div>
+    `;
+    }).join('');
+    container.querySelectorAll('.recent-item').forEach(item => {
+        item.addEventListener('click', () => {
+            openWorkflowInEditor(item.dataset.id);
+        });
+    });
+}
 /**
- * Load execution history from localStorage
+ * One-time migration: older versions stored execution history in localStorage.
+ * Move it into the main-process store (which powers analytics and the
+ * "Recently ran" list), then drop the legacy copy.
  */
-function loadExecutionHistory() {
+async function migrateLegacyExecutionHistory() {
+    if (!window.workflowAPI?.importExecutionHistory)
+        return;
     try {
         const stored = localStorage.getItem('workflow-execution-history');
-        if (stored) {
-            executionHistory = JSON.parse(stored);
+        if (!stored)
+            return;
+        const existing = await window.workflowAPI.getExecutionHistory({ limit: 1 });
+        if (Array.isArray(existing) && existing.length > 0)
+            return; // store already populated
+        const legacyHistory = JSON.parse(stored);
+        if (!Array.isArray(legacyHistory) || legacyHistory.length === 0)
+            return;
+        const result = await window.workflowAPI.importExecutionHistory(legacyHistory);
+        if (result?.success) {
+            localStorage.removeItem('workflow-execution-history');
         }
     }
-    catch (e) {
-        executionHistory = [];
-    }
-    renderExecutionHistory();
-}
-/**
- * Save execution history to localStorage
- */
-function saveExecutionHistory() {
-    try {
-        localStorage.setItem('workflow-execution-history', JSON.stringify(executionHistory.slice(0, MAX_HISTORY)));
-    }
-    catch (e) {
-        console.error('Failed to save execution history:', e);
+    catch (error) {
+        console.warn('Failed to migrate legacy execution history:', error);
     }
 }
 /**
- * Add entry to execution history
+ * Refresh the views that summarise past runs after an execution finishes.
+ * The run itself is recorded by the main process; this just re-pulls the
+ * derived "Recently ran" list and analytics dashboard.
  */
-function addToExecutionHistory(entry) {
-    executionHistory.unshift({
-        ...entry,
-        timestamp: new Date().toISOString()
-    });
-    executionHistory = executionHistory.slice(0, MAX_HISTORY);
-    saveExecutionHistory();
-    renderExecutionHistory();
+function addToExecutionHistory() {
+    renderRecentWorkflows();
+    if (typeof renderAnalyticsDashboard === 'function' && state.currentView === 'analytics') {
+        renderAnalyticsDashboard();
+    }
 }
 
 // ===== workflows-history.ts =====
 /**
- * Render execution history panel
+ * Open analytics focused on a specific workflow
  */
-function renderExecutionHistory() {
-    if (!historyList)
-        return;
-    if (executionHistory.length === 0) {
-        historyList.innerHTML = '';
+function openWorkflowAnalytics(workflowId) {
+    if (typeof showWorkflowAnalytics === 'function') {
+        showWorkflowAnalytics(workflowId);
         return;
     }
-    historyList.innerHTML = executionHistory.slice(0, 10).map(entry => `
-    <div class="history-item">
-      <div class="history-status ${entry.status}"></div>
-      <div class="history-info">
-        <div class="history-name">${escapeHtml(entry.workflowName)}</div>
-        <div class="history-meta">
-          ${formatTimeAgo(entry.timestamp)} - ${entry.loops || 1} loop${entry.loops !== 1 ? 's' : ''}, ${entry.actions || 0} actions
-        </div>
-      </div>
-    </div>
-  `).join('');
-}
-/**
- * Clear execution history
- */
-function clearExecutionHistory() {
-    executionHistory = [];
-    saveExecutionHistory();
-    renderExecutionHistory();
-    showToast('info', 'Cleared', 'Execution history cleared');
+    navigateTo('analytics');
 }
 /**
  * Format time ago
  */
 function formatTimeAgo(dateString) {
+    if (!dateString)
+        return 'Unknown';
     const date = new Date(dateString);
+    if (Number.isNaN(date.getTime()))
+        return 'Unknown';
     const now = new Date();
-    const diffMs = now - date;
+    const diffMs = +now - +date;
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
@@ -1815,6 +1815,25 @@ function formatTimeAgo(dateString) {
     if (diffDays < 7)
         return `${diffDays}d ago`;
     return date.toLocaleDateString();
+}
+function formatDurationShort(ms) {
+    const duration = Number(ms);
+    if (!Number.isFinite(duration) || duration <= 0)
+        return '0ms';
+    if (duration < 1000) {
+        return `${Math.round(duration)}ms`;
+    }
+    const totalSeconds = Math.round(duration / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) {
+        return `${hours}h ${minutes}m`;
+    }
+    if (minutes > 0) {
+        return `${minutes}m ${seconds}s`;
+    }
+    return `${seconds}s`;
 }
 /**
  * Setup hotkey trigger for workflow
@@ -5760,8 +5779,6 @@ function setupSettingsEvents() {
     document.getElementById('btn-set-hotkey').addEventListener('click', changePanicHotkey);
     // Pause hotkey
     document.getElementById('btn-set-pause-hotkey')?.addEventListener('click', changePauseHotkey);
-    // Clear history
-    document.getElementById('btn-clear-history')?.addEventListener('click', clearExecutionHistory);
     // Check for updates
     document.getElementById('btn-check-updates')?.addEventListener('click', checkForUpdates);
     // Click jitter

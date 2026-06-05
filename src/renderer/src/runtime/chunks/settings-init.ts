@@ -64,9 +64,6 @@ function setupSettingsEvents() {
   // Pause hotkey
   document.getElementById('btn-set-pause-hotkey')?.addEventListener('click', changePauseHotkey);
 
-  // Clear history
-  document.getElementById('btn-clear-history')?.addEventListener('click', clearExecutionHistory);
-
   // Check for updates
   document.getElementById('btn-check-updates')?.addEventListener('click', checkForUpdates);
 

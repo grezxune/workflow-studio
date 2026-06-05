@@ -1,44 +1,24 @@
 /**
- * Render execution history panel
+ * Open analytics focused on a specific workflow
  */
-function renderExecutionHistory() {
-  if (!historyList) return;
-
-  if (executionHistory.length === 0) {
-    historyList.innerHTML = '';
+function openWorkflowAnalytics(workflowId) {
+  if (typeof showWorkflowAnalytics === 'function') {
+    showWorkflowAnalytics(workflowId);
     return;
   }
 
-  historyList.innerHTML = executionHistory.slice(0, 10).map(entry => `
-    <div class="history-item">
-      <div class="history-status ${entry.status}"></div>
-      <div class="history-info">
-        <div class="history-name">${escapeHtml(entry.workflowName)}</div>
-        <div class="history-meta">
-          ${formatTimeAgo(entry.timestamp)} - ${entry.loops || 1} loop${entry.loops !== 1 ? 's' : ''}, ${entry.actions || 0} actions
-        </div>
-      </div>
-    </div>
-  `).join('');
-}
-
-/**
- * Clear execution history
- */
-function clearExecutionHistory() {
-  executionHistory = [];
-  saveExecutionHistory();
-  renderExecutionHistory();
-  showToast('info', 'Cleared', 'Execution history cleared');
+  navigateTo('analytics');
 }
 
 /**
  * Format time ago
  */
 function formatTimeAgo(dateString) {
+  if (!dateString) return 'Unknown';
   const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return 'Unknown';
   const now = new Date();
-  const diffMs = now - date;
+  const diffMs = +now - +date;
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
@@ -48,6 +28,28 @@ function formatTimeAgo(dateString) {
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
   return date.toLocaleDateString();
+}
+
+function formatDurationShort(ms) {
+  const duration = Number(ms);
+  if (!Number.isFinite(duration) || duration <= 0) return '0ms';
+
+  if (duration < 1000) {
+    return `${Math.round(duration)}ms`;
+  }
+
+  const totalSeconds = Math.round(duration / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+  return `${seconds}s`;
 }
 
 /**

@@ -59,72 +59,94 @@ async function exportAllWorkflows() {
  * Render recent workflows
  */
 async function renderRecentWorkflows() {
-  if (!recentContainer) return;
+  if (!recentRunContainer && !recentAddedContainer) return;
 
   try {
-    const recent = await window.workflowAPI.getRecentWorkflows();
+    const [recentRan, recentAdded] = await Promise.all([
+      window.workflowAPI.getRecentRunWorkflows?.() || [],
+      window.workflowAPI.getRecentWorkflows()
+    ]);
 
-    if (!recent || recent.length === 0) {
-      recentContainer.innerHTML = '<p style="color: var(--text-tertiary); font-size: var(--text-sm);">No recent workflows</p>';
-      return;
-    }
+    renderRecentWorkflowList(recentRunContainer, recentRan, 'No workflow runs yet', workflow => {
+      const duration = formatDurationShort(workflow.lastDurationMs);
+      const ranAt = workflow.lastRunAt ? formatTimeAgo(workflow.lastRunAt) : '';
+      return [duration, ranAt].filter(Boolean).join(' - ');
+    });
 
-    recentContainer.innerHTML = recent.slice(0, 5).map(workflow => `
-      <div class="recent-item" data-id="${workflow.id}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <polyline points="12 6 12 12 16 14"/>
-        </svg>
-        <span>${escapeHtml(workflow.name)}</span>
-      </div>
-    `).join('');
-
-    // Add click handlers
-    recentContainer.querySelectorAll('.recent-item').forEach(item => {
-      item.addEventListener('click', () => {
-        openWorkflowInEditor(item.dataset.id);
-      });
+    renderRecentWorkflowList(recentAddedContainer, recentAdded, 'No workflows added yet', workflow => {
+      return workflow.createdAt ? formatTimeAgo(workflow.createdAt) : '';
     });
   } catch (error) {
     console.error('Failed to load recent workflows:', error);
   }
 }
 
+function renderRecentWorkflowList(container, workflows, emptyMessage, metaFormatter) {
+  if (!container) return;
+
+  if (!workflows || workflows.length === 0) {
+    container.innerHTML = `<p class="recent-empty">${emptyMessage}</p>`;
+    return;
+  }
+
+  container.innerHTML = workflows.slice(0, 5).map(workflow => {
+    const meta = metaFormatter ? metaFormatter(workflow) : '';
+    return `
+      <div class="recent-item" data-id="${workflow.id}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 6 12 12 16 14"/>
+        </svg>
+        <span class="recent-item-content">
+          <span class="recent-item-name">${escapeHtml(workflow.name)}</span>
+          ${meta ? `<span class="recent-item-meta">${escapeHtml(meta)}</span>` : ''}
+        </span>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.recent-item').forEach(item => {
+    item.addEventListener('click', () => {
+      openWorkflowInEditor(item.dataset.id);
+    });
+  });
+}
+
 /**
- * Load execution history from localStorage
+ * One-time migration: older versions stored execution history in localStorage.
+ * Move it into the main-process store (which powers analytics and the
+ * "Recently ran" list), then drop the legacy copy.
  */
-function loadExecutionHistory() {
+async function migrateLegacyExecutionHistory() {
+  if (!window.workflowAPI?.importExecutionHistory) return;
+
   try {
     const stored = localStorage.getItem('workflow-execution-history');
-    if (stored) {
-      executionHistory = JSON.parse(stored);
+    if (!stored) return;
+
+    const existing = await window.workflowAPI.getExecutionHistory({ limit: 1 });
+    if (Array.isArray(existing) && existing.length > 0) return; // store already populated
+
+    const legacyHistory = JSON.parse(stored);
+    if (!Array.isArray(legacyHistory) || legacyHistory.length === 0) return;
+
+    const result = await window.workflowAPI.importExecutionHistory(legacyHistory);
+    if (result?.success) {
+      localStorage.removeItem('workflow-execution-history');
     }
-  } catch (e) {
-    executionHistory = [];
-  }
-  renderExecutionHistory();
-}
-
-/**
- * Save execution history to localStorage
- */
-function saveExecutionHistory() {
-  try {
-    localStorage.setItem('workflow-execution-history', JSON.stringify(executionHistory.slice(0, MAX_HISTORY)));
-  } catch (e) {
-    console.error('Failed to save execution history:', e);
+  } catch (error) {
+    console.warn('Failed to migrate legacy execution history:', error);
   }
 }
 
 /**
- * Add entry to execution history
+ * Refresh the views that summarise past runs after an execution finishes.
+ * The run itself is recorded by the main process; this just re-pulls the
+ * derived "Recently ran" list and analytics dashboard.
  */
-function addToExecutionHistory(entry) {
-  executionHistory.unshift({
-    ...entry,
-    timestamp: new Date().toISOString()
-  });
-  executionHistory = executionHistory.slice(0, MAX_HISTORY);
-  saveExecutionHistory();
-  renderExecutionHistory();
+function addToExecutionHistory() {
+  renderRecentWorkflows();
+  if (typeof renderAnalyticsDashboard === 'function' && state.currentView === 'analytics') {
+    renderAnalyticsDashboard();
+  }
 }

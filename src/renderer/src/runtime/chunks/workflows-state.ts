@@ -6,12 +6,8 @@
 
 let workflowGrid = null;
 let emptyWorkflows = null;
-let recentContainer = null;
-let historyList = null;
-
-// Execution history storage
-let executionHistory = [];
-const MAX_HISTORY = 50;
+let recentRunContainer = null;
+let recentAddedContainer = null;
 
 /**
  * Initialize workflows view
@@ -19,8 +15,8 @@ const MAX_HISTORY = 50;
 function initWorkflowsView() {
   workflowGrid = document.getElementById('workflow-grid');
   emptyWorkflows = document.getElementById('empty-workflows');
-  recentContainer = document.getElementById('recent-workflows-list');
-  historyList = document.getElementById('history-list');
+  recentRunContainer = document.getElementById('recent-ran-workflows-list');
+  recentAddedContainer = document.getElementById('recent-added-workflows-list');
 
   // New workflow buttons
   document.getElementById('btn-new-workflow').addEventListener('click', createNewWorkflow);
@@ -30,8 +26,8 @@ function initWorkflowsView() {
   document.getElementById('btn-import-workflow')?.addEventListener('click', importWorkflow);
   document.getElementById('btn-export-all')?.addEventListener('click', exportAllWorkflows);
 
-  // Load execution history from storage
-  loadExecutionHistory();
+  // Migrate any execution history kept by older versions in localStorage
+  migrateLegacyExecutionHistory();
 }
 
 /**
