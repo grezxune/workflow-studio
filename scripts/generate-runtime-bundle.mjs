@@ -9,9 +9,11 @@ const projectRoot = path.resolve(__dirname, '..');
 
 const chunkOrder = [
   'ui-buttons.ts',
+  'duration-input.ts',
   'app-init.ts',
   'app-ipc.ts',
   'app-ui.ts',
+  'analytics.ts',
   'workflows-state.ts',
   'workflows-cards.ts',
   'workflows-actions.ts',

@@ -49,6 +49,7 @@ async function initApp() {
 
   // Initialize views first (sets up DOM references)
   initWorkflowsView();
+  initAnalyticsView();
   initEditorView();
   initHotkeysView();
   initImagesView();
@@ -102,6 +103,7 @@ function cacheElements() {
   elements.navTabs = document.getElementById('nav-tabs');
   elements.views = {
     workflows: document.getElementById('view-workflows'),
+    analytics: document.getElementById('view-analytics'),
     editor: document.getElementById('view-editor'),
     hotkeys: document.getElementById('view-hotkeys'),
     images: document.getElementById('view-images'),
@@ -315,6 +317,9 @@ function refreshView(viewName) {
     case 'workflows':
       renderWorkflowList();
       renderRecentWorkflows();
+      break;
+    case 'analytics':
+      renderAnalyticsDashboard();
       break;
     case 'editor':
       // Editor is always kept in sync via direct state.currentWorkflow binding
