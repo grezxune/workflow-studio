@@ -19,6 +19,7 @@ import floatingBar from '../services/floating-bar';
 import { initHotkeyService, getHotkeys, setHotkey, removeHotkey } from '../services/hotkey-service';
 import { generateWorkflowDraftWithAI } from '../services/ai/ai-workflow-generator';
 import { listSupportedGames } from '../services/ai/game-context-packs';
+import { getSoundService } from '../services/sound-service';
 import { assertAuthorizedSender } from '../lib/ipc-guard';
 
 let mainWindow: BrowserWindow | null = null;
@@ -123,11 +124,13 @@ export function initializeIPC(window: BrowserWindow) {
     }
   });
 
-  setupExecutorEvents(executor);
+  setupExecutorEvents(executor, storage);
   registerWorkflowHandlers(storage);
   registerExecutionHandlers(executor);
+  registerAnalyticsHandlers(storage);
   registerSettingsHandlers(storage);
   registerDetectionHandlers(detection);
+  registerAudioHandlers();
   registerSafetyHandlers(safety);
   registerUtilityHandlers();
   registerTemplateHandlers(storage);
@@ -146,22 +149,52 @@ function sendToRenderer(channel: string, data?: any) {
   }
 }
 
-function setupExecutorEvents(executor) {
+function setupExecutorEvents(executor, storage) {
+  let currentExecutionRecord: any = null;
+
+  function recordExecutorRun(status, data: any = {}) {
+    if (!currentExecutionRecord) return;
+
+    const endedAt = Date.now();
+    storage.recordWorkflowExecution({
+      ...currentExecutionRecord,
+      status,
+      endedAt: new Date(endedAt).toISOString(),
+      durationMs: endedAt - currentExecutionRecord.startedAtMs,
+      completedLoops: Number.isFinite(executor.currentLoop) ? executor.currentLoop : null,
+      error: data.error?.message || data.error || null
+    });
+    currentExecutionRecord = null;
+  }
+
   executor.on('workflow:start', (data) => {
+    const startedAt = Date.now();
+    currentExecutionRecord = {
+      workflowId: data.workflow?.id,
+      workflowName: data.workflow?.name || 'Untitled Workflow',
+      startedAt: new Date(startedAt).toISOString(),
+      startedAtMs: startedAt,
+      loopsConfigured: data.totalLoops || data.workflow?.loopCount || 1,
+      actions: data.workflow?.actions?.length || 0,
+      dryRun: !!data.dryRun
+    };
     sendToRenderer(IPC_CHANNELS.EXECUTION_STARTED, data);
   });
 
   executor.on('workflow:complete', (data) => {
+    recordExecutorRun('completed', data);
     sendToRenderer(IPC_CHANNELS.EXECUTION_COMPLETED, data);
     floatingBar.closeFloatingBar();
   });
 
   executor.on('workflow:stopped', (data) => {
+    recordExecutorRun('stopped', data);
     sendToRenderer(IPC_CHANNELS.EXECUTION_STOPPED, data);
     floatingBar.closeFloatingBar();
   });
 
   executor.on('workflow:error', (data) => {
+    recordExecutorRun('error', data);
     sendToRenderer(IPC_CHANNELS.EXECUTION_ERROR, { error: data.error.message });
     floatingBar.closeFloatingBar();
   });
@@ -217,6 +250,20 @@ function setupExecutorEvents(executor) {
 
   executor.on('state:change', (data) => {
     sendToRenderer(IPC_CHANNELS.EXECUTION_STATE_CHANGED, data);
+  });
+
+  executor.on('variables:sync', (data) => {
+    sendToRenderer(IPC_CHANNELS.EXECUTION_VARIABLES_SYNC, data);
+    floatingBar.sendToFloatingBar('floating-bar:variables-sync', data);
+  });
+
+  executor.on('variable:changed', (data) => {
+    sendToRenderer(IPC_CHANNELS.EXECUTION_VARIABLE_CHANGED, data);
+    floatingBar.sendToFloatingBar('floating-bar:variable-changed', data);
+  });
+
+  executor.on('sound:play', (data) => {
+    sendToRenderer('audio:play', data);
   });
 }
 
@@ -291,6 +338,10 @@ function registerWorkflowHandlers(storage) {
   secureHandle(IPC_CHANNELS.GET_RECENT_WORKFLOWS, async () => {
     return storage.getRecentWorkflows();
   });
+
+  secureHandle(IPC_CHANNELS.GET_RECENT_RUN_WORKFLOWS, async () => {
+    return storage.getRecentRunWorkflows();
+  });
 }
 
 function registerExecutionHandlers(executor) {
@@ -332,6 +383,33 @@ function registerExecutionHandlers(executor) {
 
   secureHandle(IPC_CHANNELS.GET_EXECUTION_STATUS, async () => {
     return executor.getStatus();
+  });
+
+  secureHandle('execution:reset-variable', async (event, variableId) => {
+    executor.resetVariable(variableId);
+    return { success: true };
+  });
+}
+
+function registerAnalyticsHandlers(storage) {
+  secureHandle(IPC_CHANNELS.GET_EXECUTION_HISTORY, async (event, options = {}) => {
+    return storage.getExecutionHistory(options || {});
+  });
+
+  secureHandle(IPC_CHANNELS.IMPORT_EXECUTION_HISTORY, async (event, records = []) => {
+    return storage.importExecutionHistory(records);
+  });
+
+  secureHandle(IPC_CHANNELS.CLEAR_EXECUTION_HISTORY, async () => {
+    return storage.clearExecutionHistory();
+  });
+
+  secureHandle(IPC_CHANNELS.GET_WORKFLOW_ANALYTICS, async (event, workflowId) => {
+    return storage.getWorkflowAnalytics(workflowId);
+  });
+
+  secureHandle(IPC_CHANNELS.GET_OVERALL_ANALYTICS, async () => {
+    return storage.getOverallAnalytics();
   });
 }
 
@@ -495,6 +573,41 @@ function registerDetectionHandlers(detection) {
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : String(e) };
     }
+  });
+}
+
+function registerAudioHandlers() {
+  const soundService = getSoundService();
+  const storage = getStorageService();
+
+  secureHandle(IPC_CHANNELS.GET_SYSTEM_SOUNDS, async () => {
+    return [...soundService.getAvailableSounds(), ...storage.getCustomSounds()];
+  });
+
+  secureHandle(IPC_CHANNELS.PLAY_SYSTEM_SOUND, async (event, soundId) => {
+    return soundService.playSound(soundId);
+  });
+
+  secureHandle(IPC_CHANNELS.SPEAK_TEXT, async (event, payload = {}) => {
+    const { text, volume } = (payload || {}) as any;
+    return soundService.speakText(text, volume);
+  });
+
+  secureHandle(IPC_CHANNELS.IMPORT_CUSTOM_SOUND, async () => {
+    const { filePaths } = await dialog.showOpenDialog(mainWindow!, {
+      title: 'Import Custom Sound',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Audio Files', extensions: ['wav', 'mp3', 'ogg', 'm4a', 'aac', 'flac'] }
+      ]
+    });
+
+    if (!filePaths?.length) return null;
+    return storage.importCustomSound(filePaths[0]);
+  });
+
+  secureHandle(IPC_CHANNELS.DELETE_CUSTOM_SOUND, async (event, soundId) => {
+    return storage.deleteCustomSound(soundId);
   });
 }
 
@@ -700,6 +813,11 @@ function registerFloatingBarHandlers() {
     const duration = assertNumber(payload.duration, 'wait duration');
     floatingBar.sendToFloatingBar('floating-bar:wait-start', { duration });
     floatingBar.sendToFloatingBar('floating-bar:wait-tick', payload);
+    return { success: true };
+  });
+
+  secureHandle('floating-bar:variables-sync', async (event, data) => {
+    floatingBar.sendToFloatingBar('floating-bar:variables-sync', data);
     return { success: true };
   });
 }

@@ -9,9 +9,16 @@ import { BrowserWindow, ipcMain, screen, type IpcMainEvent } from 'electron';
 import { getOverlayPreloadPath, loadRendererPage } from '../lib/renderer-path';
 import { verifyAuthorizedSender } from '../lib/ipc-guard';
 import { hardenBrowserWindow } from '../lib/window-security';
+import { getStorageService } from './storage';
 
 let floatingWindow = null;
 let mainWindow = null;
+const FLOATING_BAR_WIDTH = 860;
+const FLOATING_BAR_HEIGHT = 168;
+const FLOATING_BAR_MIN_WIDTH = 340;
+const FLOATING_BAR_MIN_HEIGHT = 150;
+let floatingBarBounds: any = null;
+let persistBoundsTimeout: any = null;
 
 /**
  * Show the floating bar window
@@ -25,28 +32,38 @@ export function showFloatingBar(mainWin) {
   }
 
   // Position at bottom-center of the primary display
+  const storage = getStorageService();
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenW, height: screenH } = primaryDisplay.workAreaSize;
-  const barWidth = 380;
-  const barHeight = 60;
-  const x = Math.round((screenW - barWidth) / 2);
-  const y = screenH - barHeight - 20;
+  const defaultBounds = {
+    width: FLOATING_BAR_WIDTH,
+    height: FLOATING_BAR_HEIGHT,
+    x: Math.round((screenW - FLOATING_BAR_WIDTH) / 2),
+    y: screenH - FLOATING_BAR_HEIGHT - 28
+  };
+  const storedBounds = storage.getSetting('floatingBarBounds');
+  const bounds = sanitizeFloatingBarBounds(floatingBarBounds || storedBounds, defaultBounds);
 
   floatingWindow = new BrowserWindow({
-    x,
-    y,
-    width: barWidth,
-    height: barHeight,
-    frame: false,
-    transparent: true,
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    minWidth: FLOATING_BAR_MIN_WIDTH,
+    minHeight: FLOATING_BAR_MIN_HEIGHT,
+    frame: true,
+    transparent: false,
+    title: 'Workflow Runner',
+    autoHideMenuBar: true,
+    backgroundColor: '#18181b',
     alwaysOnTop: true,
     skipTaskbar: true,
-    resizable: false,
+    resizable: true,
     minimizable: false,
     maximizable: false,
     closable: false,
     hasShadow: false,
-    focusable: false,
+    focusable: true,
     webPreferences: {
       preload: getOverlayPreloadPath(),
       nodeIntegration: false,
@@ -60,7 +77,20 @@ export function showFloatingBar(mainWin) {
 
   void loadRendererPage(floatingWindow, 'floating-bar.html');
 
+  floatingWindow.on('resize', () => {
+    if (!floatingWindow || floatingWindow.isDestroyed()) return;
+    floatingBarBounds = floatingWindow.getBounds();
+    persistFloatingBarBounds();
+  });
+
+  floatingWindow.on('move', () => {
+    if (!floatingWindow || floatingWindow.isDestroyed()) return;
+    floatingBarBounds = floatingWindow.getBounds();
+    persistFloatingBarBounds();
+  });
+
   floatingWindow.on('closed', () => {
+    persistFloatingBarBounds(true);
     floatingWindow = null;
   });
 }
@@ -79,9 +109,47 @@ export function hideFloatingBar() {
  */
 export function closeFloatingBar() {
   if (floatingWindow && !floatingWindow.isDestroyed()) {
+    persistFloatingBarBounds(true);
     floatingWindow.destroy();
     floatingWindow = null;
   }
+}
+
+function persistFloatingBarBounds(flush = false) {
+  const save = () => {
+    if (!floatingBarBounds) return;
+    getStorageService().setSetting('floatingBarBounds', floatingBarBounds);
+  };
+
+  if (flush) {
+    if (persistBoundsTimeout) {
+      clearTimeout(persistBoundsTimeout);
+      persistBoundsTimeout = null;
+    }
+    save();
+    return;
+  }
+
+  if (persistBoundsTimeout) {
+    clearTimeout(persistBoundsTimeout);
+  }
+  persistBoundsTimeout = setTimeout(() => {
+    persistBoundsTimeout = null;
+    save();
+  }, 150);
+}
+
+function sanitizeFloatingBarBounds(bounds, fallback) {
+  if (!bounds || typeof bounds !== 'object') {
+    return fallback;
+  }
+
+  const width = Math.max(FLOATING_BAR_MIN_WIDTH, Number(bounds.width) || fallback.width);
+  const height = Math.max(FLOATING_BAR_MIN_HEIGHT, Number(bounds.height) || fallback.height);
+  const x = Number.isFinite(bounds.x) ? bounds.x : fallback.x;
+  const y = Number.isFinite(bounds.y) ? bounds.y : fallback.y;
+
+  return { x, y, width, height };
 }
 
 /**
@@ -107,6 +175,9 @@ export function initFloatingBarIPC() {
   ipcMain.removeAllListeners('floating-bar:pause');
   ipcMain.removeAllListeners('floating-bar:stop');
   ipcMain.removeAllListeners('floating-bar:expand');
+  ipcMain.removeAllListeners('floating-bar:reset-variable');
+  ipcMain.removeAllListeners('floating-bar:set-stop-time');
+  ipcMain.removeAllListeners('floating-bar:clear-stop-time');
 
   const allowFloatingSender = (event: IpcMainEvent, channel: string): boolean =>
     verifyAuthorizedSender(event, floatingWindow, channel);
@@ -141,6 +212,33 @@ export function initFloatingBarIPC() {
       mainWindow.webContents.send('floating-bar:expand-clicked');
       mainWindow.show();
       mainWindow.focus();
+    }
+  });
+
+  ipcMain.on('floating-bar:reset-variable', (event, variableId) => {
+    if (!allowFloatingSender(event, 'floating-bar:reset-variable')) {
+      return;
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('floating-bar:reset-variable-clicked', { variableId });
+    }
+  });
+
+  ipcMain.on('floating-bar:set-stop-time', (event, data) => {
+    if (!allowFloatingSender(event, 'floating-bar:set-stop-time')) {
+      return;
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('floating-bar:set-stop-time-clicked', data);
+    }
+  });
+
+  ipcMain.on('floating-bar:clear-stop-time', (event) => {
+    if (!allowFloatingSender(event, 'floating-bar:clear-stop-time')) {
+      return;
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('floating-bar:clear-stop-time-clicked');
     }
   });
 }

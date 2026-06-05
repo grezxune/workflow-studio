@@ -29,6 +29,8 @@ class WorkflowExecutor extends EventEmitter {
     this.shouldStop = false;
     this.dryRun = false;
     this.lastDetection = null;
+    this.variableDefinitions = [];
+    this.variableState = new Map();
   }
 
   async execute(workflow: any, options: any = {}) {
@@ -53,6 +55,7 @@ class WorkflowExecutor extends EventEmitter {
     this.isPaused = false;
     this.shouldStop = false;
     this.dryRun = options.dryRun || false;
+    this.initializeVariables(workflow);
     const infinite = !!workflow.infiniteLoop;
     const totalLoops = infinite ? Infinity : (workflow.loopCount || 1);
 
@@ -60,7 +63,12 @@ class WorkflowExecutor extends EventEmitter {
     console.log(`[Executor] Actions: ${workflow.actions?.length || 0}, Loops: ${infinite ? '∞' : totalLoops}, DryRun: ${this.dryRun}`);
 
     this.setState(EXECUTION_STATES.RUNNING);
-    this.emit('workflow:start', { workflow, totalLoops: infinite ? '∞' : totalLoops });
+    this.emit('workflow:start', {
+      workflow,
+      totalLoops: infinite ? '∞' : totalLoops,
+      dryRun: this.dryRun,
+      variables: this.getVariableSnapshot()
+    });
 
     try {
       for (let loop = 0; (infinite || loop < totalLoops) && !this.shouldStop; loop++) {
@@ -92,7 +100,71 @@ class WorkflowExecutor extends EventEmitter {
       throw error;
     } finally {
       this.currentWorkflow = null;
+      this.variableDefinitions = [];
+      this.variableState.clear();
     }
+  }
+
+  initializeVariables(workflow) {
+    this.variableDefinitions = Array.isArray(workflow?.variables) ? workflow.variables : [];
+    this.variableState = new Map();
+    this.variableDefinitions.forEach((variable) => {
+      if (!variable?.id) return;
+      this.variableState.set(variable.id, {
+        value: false,
+        triggeredAt: null,
+        lastSetAt: null
+      });
+    });
+    this.emit('variables:sync', { variables: this.getVariableSnapshot() });
+  }
+
+  getVariableSnapshot() {
+    return this.variableDefinitions.map((variable) => ({
+      ...variable,
+      value: !!this.variableState.get(variable.id)?.value,
+      triggeredAt: this.variableState.get(variable.id)?.triggeredAt || null,
+      lastSetAt: this.variableState.get(variable.id)?.lastSetAt || null
+    }));
+  }
+
+  setVariable(variableId, value, metadata: any = {}) {
+    if (!variableId || !this.variableState.has(variableId)) {
+      return;
+    }
+
+    const nextValue = !!value;
+    const previousState = this.variableState.get(variableId) || {
+      value: false,
+      triggeredAt: null,
+      lastSetAt: null
+    };
+    const previousValue = !!previousState.value;
+    if (previousValue === nextValue) {
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    this.variableState.set(variableId, {
+      value: nextValue,
+      triggeredAt: nextValue ? nowIso : null,
+      lastSetAt: nextValue ? nowIso : previousState.lastSetAt
+    });
+    const definition = this.variableDefinitions.find((variable) => variable.id === variableId);
+    this.emit('variable:changed', {
+      variable: {
+        ...definition,
+        value: nextValue,
+        triggeredAt: nextValue ? nowIso : null,
+        lastSetAt: nextValue ? nowIso : previousState.lastSetAt
+      },
+      source: metadata.source || 'runtime'
+    });
+    this.emit('variables:sync', { variables: this.getVariableSnapshot() });
+  }
+
+  resetVariable(variableId) {
+    this.setVariable(variableId, false, { source: 'manual-reset' });
   }
 
   async executeActions(actions) {
@@ -323,6 +395,7 @@ class WorkflowExecutor extends EventEmitter {
       }
 
       this.emit('wait:tick', { duration, remaining: 0, elapsed: duration, paused: false });
+      this.setVariable(action.setVariableId, true, { source: 'wait' });
       console.log('[Executor] Wait complete');
     } else if (action.waitFor === 'image' && this.detectionService) {
       await this.waitForImage(action);
@@ -332,13 +405,51 @@ class WorkflowExecutor extends EventEmitter {
   }
 
   async performConditional(action) {
-    const conditionMet = await this.evaluateCondition(action.condition);
+    const branch = await this.resolveConditionalBranch(action);
 
-    if (conditionMet && action.thenActions) {
+    if (branch === 'then' && action.thenActions) {
       await this.executeActions(action.thenActions);
-    } else if (!conditionMet && action.elseActions) {
+    } else if (branch === 'else' && action.elseActions) {
       await this.executeActions(action.elseActions);
     }
+  }
+
+  async resolveConditionalBranch(action) {
+    const useElseCondition = !!action?.useElseCondition && !!action?.elseCondition;
+    const waitUntilEitherCondition = useElseCondition && !!action?.waitUntilEitherCondition;
+    const pollInterval = Math.max(100, action?.pollInterval || 500);
+
+    while (!this.shouldStop) {
+      const thenMatched = await this.evaluateCondition(action.condition);
+      if (thenMatched) {
+        return 'then';
+      }
+
+      if (!useElseCondition) {
+        return 'else';
+      }
+
+      const elseMatched = await this.evaluateCondition(action.elseCondition);
+      if (elseMatched) {
+        return 'else';
+      }
+
+      if (!waitUntilEitherCondition) {
+        return null;
+      }
+
+      while (this.isPaused && !this.shouldStop) {
+        await sleep(100);
+      }
+
+      if (this.shouldStop) {
+        return null;
+      }
+
+      await sleep(pollInterval);
+    }
+
+    return null;
   }
 
   async performLoop(action) {
@@ -362,6 +473,7 @@ class WorkflowExecutor extends EventEmitter {
     }
 
     const pollInterval = action.pollInterval || 500;
+    const lookForAbsence = action.detectMode === 'absent';
 
     while (true) {
       const result = await this.detectionService.findImage(action.imageId, {
@@ -370,24 +482,28 @@ class WorkflowExecutor extends EventEmitter {
         scaleDown: action.scaleDown || false
       });
 
-      if (result) {
-        this.lastDetection = result;
-        this.emit('detection:found', { type: 'image', result });
+      const conditionMet = lookForAbsence ? !result : !!result;
+
+      if (conditionMet) {
+        if (result) this.lastDetection = result;
+        await this.playDetectionSound(action);
+        this.setVariable(action.setVariableId, true, { source: 'image_detect' });
+        this.emit(lookForAbsence ? 'detection:absent' : 'detection:found', { type: 'image', result: result || null });
         return;
       }
 
-      // Image not found
+      // Condition not met on this check
       if (!action.waitUntilFound) {
-        this.emit('detection:notfound', { type: 'image' });
+        this.emit(lookForAbsence ? 'detection:present' : 'detection:notfound', { type: 'image' });
         if (action.failOnNotFound) {
-          throw new Error('Image not found');
+          throw new Error(lookForAbsence ? 'Image still present' : 'Image not found');
         }
         return;
       }
 
-      // Wait until found mode — keep polling
-      console.log(`[Executor] Image "${action.imageId}" not found, retrying in ${pollInterval}ms...`);
-      this.emit('detection:notfound', { type: 'image', waiting: true });
+      // Wait until condition met — keep polling
+      console.log(`[Executor] Image "${action.imageId}" ${lookForAbsence ? 'still present' : 'not found'}, retrying in ${pollInterval}ms...`);
+      this.emit(lookForAbsence ? 'detection:present' : 'detection:notfound', { type: 'image', waiting: true });
 
       // Respect pause
       while (this.isPaused && !this.shouldStop) {
@@ -420,6 +536,7 @@ class WorkflowExecutor extends EventEmitter {
 
     if (result) {
       this.lastDetection = result;
+      this.setVariable(action.setVariableId, true, { source: 'pixel_detect' });
       this.emit('detection:found', { type: 'pixel', result });
     } else {
       this.emit('detection:notfound', { type: 'pixel' });
@@ -427,6 +544,19 @@ class WorkflowExecutor extends EventEmitter {
         throw new Error('Pixel not found');
       }
     }
+  }
+
+  async playDetectionSound(action) {
+    if (!action?.soundId || action.soundId === 'none') {
+      return;
+    }
+
+    this.emit('sound:play', {
+      soundId: action.soundId,
+      volume: action.soundVolume || 100,
+      repeatCount: action.soundRepeatCount || 1,
+      speechText: action.speechText || ''
+    });
   }
 
   async waitForImage(action) {
@@ -553,7 +683,8 @@ class WorkflowExecutor extends EventEmitter {
       currentAction: this.currentActionIndex,
       totalActions: this.currentWorkflow?.actions?.length || 0,
       isPaused: this.isPaused,
-      dryRun: this.dryRun
+      dryRun: this.dryRun,
+      variables: this.getVariableSnapshot()
     };
   }
 }

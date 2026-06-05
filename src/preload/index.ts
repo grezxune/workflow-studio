@@ -17,6 +17,8 @@ const validReceiveChannels = [
   IPC_CHANNELS.EXECUTION_PAUSED,
   IPC_CHANNELS.EXECUTION_RESUMED,
   IPC_CHANNELS.EXECUTION_STATE_CHANGED,
+  IPC_CHANNELS.EXECUTION_VARIABLES_SYNC,
+  IPC_CHANNELS.EXECUTION_VARIABLE_CHANGED,
   IPC_CHANNELS.ACTION_STARTED,
   IPC_CHANNELS.ACTION_COMPLETED,
   IPC_CHANNELS.ACTION_ERROR,
@@ -26,12 +28,16 @@ const validReceiveChannels = [
   'floating-bar:pause-clicked',
   'floating-bar:stop-clicked',
   'floating-bar:expand-clicked',
+  'floating-bar:reset-variable-clicked',
+  'floating-bar:set-stop-time-clicked',
+  'floating-bar:clear-stop-time-clicked',
   'update:checking',
   'update:available',
   'update:not-available',
   'update:download-progress',
   'update:downloaded',
-  'update:error'
+  'update:error',
+  'audio:play'
 ];
 
 /**
@@ -67,6 +73,9 @@ contextBridge.exposeInMainWorld('workflowAPI', {
   getRecentWorkflows: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_RECENT_WORKFLOWS),
 
+  getRecentRunWorkflows: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_RECENT_RUN_WORKFLOWS),
+
   generateWorkflowWithAI: (payload) =>
     ipcRenderer.invoke(IPC_CHANNELS.AI_GENERATE_WORKFLOW, payload),
 
@@ -92,6 +101,24 @@ contextBridge.exposeInMainWorld('workflowAPI', {
 
   getExecutionStatus: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_EXECUTION_STATUS),
+
+  getExecutionHistory: (options = {}) =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_EXECUTION_HISTORY, options),
+
+  importExecutionHistory: (records = []) =>
+    ipcRenderer.invoke(IPC_CHANNELS.IMPORT_EXECUTION_HISTORY, records),
+
+  clearExecutionHistory: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.CLEAR_EXECUTION_HISTORY),
+
+  getWorkflowAnalytics: (workflowId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_WORKFLOW_ANALYTICS, workflowId),
+
+  getOverallAnalytics: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_OVERALL_ANALYTICS),
+
+  resetWorkflowVariable: (variableId) =>
+    ipcRenderer.invoke('execution:reset-variable', variableId),
 
   // ==================== SETTINGS ====================
 
@@ -132,6 +159,21 @@ contextBridge.exposeInMainWorld('workflowAPI', {
 
   getScreenSize: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SCREEN_SIZE),
+
+  getSystemSounds: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_SYSTEM_SOUNDS),
+
+  playSystemSound: (soundId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PLAY_SYSTEM_SOUND, soundId),
+
+  speakText: ({ text, volume }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SPEAK_TEXT, { text, volume }),
+
+  importCustomSound: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.IMPORT_CUSTOM_SOUND),
+
+  deleteCustomSound: (soundId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.DELETE_CUSTOM_SOUND, soundId),
 
   // Region capture with selection UI
   captureRegionTemplate: (options) =>
@@ -355,6 +397,18 @@ contextBridge.exposeInMainWorld('workflowAPI', {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.EXECUTION_STATE_CHANGED, subscription);
   },
 
+  onExecutionVariablesSync: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on(IPC_CHANNELS.EXECUTION_VARIABLES_SYNC, subscription);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.EXECUTION_VARIABLES_SYNC, subscription);
+  },
+
+  onExecutionVariableChanged: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on(IPC_CHANNELS.EXECUTION_VARIABLE_CHANGED, subscription);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.EXECUTION_VARIABLE_CHANGED, subscription);
+  },
+
   onPanicTriggered: (callback) => {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on(IPC_CHANNELS.PANIC_TRIGGERED, subscription);
@@ -368,6 +422,7 @@ contextBridge.exposeInMainWorld('workflowAPI', {
   updateFloatingBarPause: (paused) => ipcRenderer.invoke('floating-bar:update-pause', paused),
   updateFloatingBarStopTimer: (data) => ipcRenderer.invoke('floating-bar:update-stop-timer', data),
   syncFloatingBarWait: (data) => ipcRenderer.invoke('floating-bar:sync-wait', data),
+  syncFloatingBarVariables: (data) => ipcRenderer.invoke('floating-bar:variables-sync', data),
 
   onFloatingBarPauseClicked: (callback) => {
     const subscription = (event) => callback();
@@ -385,6 +440,24 @@ contextBridge.exposeInMainWorld('workflowAPI', {
     const subscription = (event) => callback();
     ipcRenderer.on('floating-bar:expand-clicked', subscription);
     return () => ipcRenderer.removeListener('floating-bar:expand-clicked', subscription);
+  },
+
+  onFloatingBarResetVariableClicked: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('floating-bar:reset-variable-clicked', subscription);
+    return () => ipcRenderer.removeListener('floating-bar:reset-variable-clicked', subscription);
+  },
+
+  onFloatingBarSetStopTime: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('floating-bar:set-stop-time-clicked', subscription);
+    return () => ipcRenderer.removeListener('floating-bar:set-stop-time-clicked', subscription);
+  },
+
+  onFloatingBarClearStopTime: (callback) => {
+    const subscription = (event) => callback();
+    ipcRenderer.on('floating-bar:clear-stop-time-clicked', subscription);
+    return () => ipcRenderer.removeListener('floating-bar:clear-stop-time-clicked', subscription);
   },
 
   // ==================== AUTO-UPDATE ====================
@@ -430,6 +503,12 @@ contextBridge.exposeInMainWorld('workflowAPI', {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on('hotkeys:triggered', subscription);
     return () => ipcRenderer.removeListener('hotkeys:triggered', subscription);
+  },
+
+  onAudioPlay: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('audio:play', subscription);
+    return () => ipcRenderer.removeListener('audio:play', subscription);
   },
 
   // Remove all listeners

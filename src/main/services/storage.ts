@@ -14,6 +14,8 @@ import { assertSafeFileId, resolvePathWithin } from '../lib/safe-path';
 import { getStoreEncryptionKey } from '../lib/store-encryption-key';
 import { createStoreWithRecovery } from '../lib/store-recovery';
 
+const MAX_EXECUTION_HISTORY = 1000;
+
 class StorageService {
   [key: string]: any;
 
@@ -28,7 +30,8 @@ class StorageService {
         cwd: storeDir,
         defaults: {
           settings: DEFAULT_SETTINGS,
-          recentWorkflows: []
+          recentWorkflows: [],
+          executionHistory: []
         }
       };
 
@@ -51,6 +54,7 @@ class StorageService {
     this.imagesDir = null;
     this.detectionsDir = null;
     this.templatesDir = null;
+    this.soundsDir = null;
 
     try {
       this.initializeDirectories();
@@ -91,9 +95,10 @@ class StorageService {
     this.imagesDir = path.join(baseDir, 'images');
     this.detectionsDir = path.join(baseDir, 'detections');
     this.templatesDir = path.join(baseDir, 'templates');
+    this.soundsDir = path.join(baseDir, 'sounds');
     const workflowsSubdir = path.join(baseDir, 'workflows');
 
-    [baseDir, workflowsSubdir, this.imagesDir, this.detectionsDir, this.templatesDir].forEach((dir) => {
+    [baseDir, workflowsSubdir, this.imagesDir, this.detectionsDir, this.templatesDir, this.soundsDir].forEach((dir) => {
       if (!fs.existsSync(dir)) {
         console.log('[Storage] Creating directory:', dir);
         fs.mkdirSync(dir, { recursive: true });
@@ -522,8 +527,206 @@ class StorageService {
   }
 
   getRecentWorkflows() {
-    const recent = this.store.get('recentWorkflows', []);
-    return recent.map(id => this.getWorkflow(id)).filter(Boolean);
+    return this.getAllWorkflows()
+      .sort((a, b) => +new Date(b.createdAt || b.updatedAt || 0) - +new Date(a.createdAt || a.updatedAt || 0))
+      .slice(0, 10);
+  }
+
+  recordWorkflowExecution(entry: any = {}) {
+    if (!entry.workflowId) return null;
+
+    const now = new Date().toISOString();
+    const durationMs = Number.isFinite(entry.durationMs)
+      ? Math.max(0, Math.round(entry.durationMs))
+      : 0;
+    const record = {
+      id: entry.id || uuidv4(),
+      workflowId: entry.workflowId,
+      workflowName: entry.workflowName || 'Untitled Workflow',
+      status: entry.status || 'completed',
+      startedAt: entry.startedAt || now,
+      endedAt: entry.endedAt || now,
+      durationMs,
+      loopsConfigured: entry.loopsConfigured ?? 1,
+      completedLoops: entry.completedLoops ?? null,
+      actions: entry.actions ?? 0,
+      dryRun: !!entry.dryRun,
+      error: entry.error || null
+    };
+
+    const history = this.getExecutionHistory();
+    history.unshift(record);
+    this.store.set('executionHistory', history.slice(0, MAX_EXECUTION_HISTORY));
+    return record;
+  }
+
+  getExecutionHistory(options: any = {}) {
+    let history = this.store.get('executionHistory', []);
+    if (!Array.isArray(history)) history = [];
+
+    if (options.workflowId) {
+      history = history.filter(record => record.workflowId === options.workflowId);
+    }
+
+    history = history
+      .filter(record => record && record.workflowId)
+      .sort((a, b) => +new Date(b.startedAt || b.endedAt || 0) - +new Date(a.startedAt || a.endedAt || 0));
+
+    if (Number.isFinite(options.limit)) {
+      history = history.slice(0, Math.max(0, options.limit));
+    }
+
+    return history;
+  }
+
+  clearExecutionHistory() {
+    this.store.set('executionHistory', []);
+    return { success: true };
+  }
+
+  importExecutionHistory(records: any[] = []) {
+    if (!Array.isArray(records) || records.length === 0) {
+      return { success: true, imported: 0 };
+    }
+
+    const existing = this.getExecutionHistory();
+    const seen = new Set(existing.map(record => `${record.workflowId}:${record.startedAt}:${record.status}`));
+    const imported = [];
+
+    for (const entry of records) {
+      if (!entry?.workflowId) continue;
+
+      const startedAt = entry.startedAt || entry.timestamp || new Date().toISOString();
+      const endedAt = entry.endedAt || entry.timestamp || startedAt;
+      const durationMs = Number.isFinite(entry.durationMs)
+        ? entry.durationMs
+        : (Number.isFinite(entry.duration) ? entry.duration : Math.max(0, +new Date(endedAt) - +new Date(startedAt)));
+      const status = entry.status || 'completed';
+      const dedupeKey = `${entry.workflowId}:${startedAt}:${status}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+
+      imported.push({
+        id: entry.id || uuidv4(),
+        workflowId: entry.workflowId,
+        workflowName: entry.workflowName || 'Untitled Workflow',
+        status,
+        startedAt,
+        endedAt,
+        durationMs: Math.max(0, Math.round(durationMs || 0)),
+        loopsConfigured: entry.loopsConfigured ?? entry.loops ?? 1,
+        completedLoops: entry.completedLoops ?? null,
+        actions: entry.actions ?? 0,
+        dryRun: !!entry.dryRun,
+        error: entry.error || null
+      });
+    }
+
+    const nextHistory = [...imported, ...existing]
+      .sort((a, b) => +new Date(b.startedAt || b.endedAt || 0) - +new Date(a.startedAt || a.endedAt || 0))
+      .slice(0, MAX_EXECUTION_HISTORY);
+    this.store.set('executionHistory', nextHistory);
+
+    return { success: true, imported: imported.length };
+  }
+
+  getRecentRunWorkflows(limit = 10) {
+    const seen = new Set();
+    const recent = [];
+
+    for (const record of this.getExecutionHistory()) {
+      if (seen.has(record.workflowId)) continue;
+      const workflow = this.getWorkflow(record.workflowId);
+      if (!workflow) continue;
+      seen.add(record.workflowId);
+
+      const analytics = this.getWorkflowAnalytics(record.workflowId);
+      recent.push({
+        ...workflow,
+        lastRunAt: record.startedAt,
+        lastRunStatus: record.status,
+        lastDurationMs: record.durationMs,
+        runCount: analytics.summary.totalRuns
+      });
+
+      if (recent.length >= limit) break;
+    }
+
+    return recent;
+  }
+
+  getWorkflowAnalytics(workflowId) {
+    const workflow = this.getWorkflow(workflowId);
+    const history = this.getExecutionHistory({ workflowId });
+    return {
+      workflow,
+      summary: this.buildExecutionSummary(history),
+      runs: history
+    };
+  }
+
+  getOverallAnalytics() {
+    const history = this.getExecutionHistory();
+    const workflows = this.getAllWorkflows();
+    const workflowNames = new Map(workflows.map(workflow => [workflow.id, workflow.name]));
+    const grouped = new Map();
+
+    for (const record of history) {
+      if (!grouped.has(record.workflowId)) grouped.set(record.workflowId, []);
+      grouped.get(record.workflowId).push(record);
+    }
+
+    const perWorkflow = Array.from(grouped.entries()).map(([workflowId, records]) => ({
+      workflowId,
+      workflowName: workflowNames.get(workflowId) || records[0]?.workflowName || 'Deleted Workflow',
+      summary: this.buildExecutionSummary(records)
+    })).sort((a, b) => b.summary.totalRuns - a.summary.totalRuns);
+
+    return {
+      summary: this.buildExecutionSummary(history),
+      workflowCount: workflows.length,
+      workflowsRun: perWorkflow.length,
+      perWorkflow,
+      recentRuns: history.slice(0, 25)
+    };
+  }
+
+  buildExecutionSummary(history: any[] = []) {
+    const records = Array.isArray(history) ? history : [];
+    const totalRuns = records.length;
+    const completedRuns = records.filter(record => record.status === 'completed').length;
+    const stoppedRuns = records.filter(record => record.status === 'stopped').length;
+    const errorRuns = records.filter(record => record.status === 'error').length;
+    const dryRuns = records.filter(record => record.dryRun).length;
+    const durations = records
+      .map(record => Number(record.durationMs))
+      .filter(duration => Number.isFinite(duration) && duration >= 0);
+    const totalDurationMs = durations.reduce((total, duration) => total + duration, 0);
+    const totalActions = records.reduce((total, record) => total + (Number(record.actions) || 0), 0);
+    const completedLoopCounts = records
+      .map(record => Number(record.completedLoops))
+      .filter(loopCount => Number.isFinite(loopCount) && loopCount >= 0);
+    const totalCompletedLoops = completedLoopCounts.reduce((total, loopCount) => total + loopCount, 0);
+
+    return {
+      totalRuns,
+      completedRuns,
+      stoppedRuns,
+      errorRuns,
+      dryRuns,
+      successRate: totalRuns ? completedRuns / totalRuns : 0,
+      totalDurationMs,
+      averageDurationMs: durations.length ? totalDurationMs / durations.length : 0,
+      shortestDurationMs: durations.length ? Math.min(...durations) : 0,
+      longestDurationMs: durations.length ? Math.max(...durations) : 0,
+      totalActions,
+      averageActions: totalRuns ? totalActions / totalRuns : 0,
+      totalCompletedLoops,
+      averageCompletedLoops: completedLoopCounts.length ? totalCompletedLoops / completedLoopCounts.length : 0,
+      firstRunAt: records.length ? records[records.length - 1].startedAt : null,
+      lastRunAt: records.length ? records[0].startedAt : null,
+      lastStatus: records.length ? records[0].status : null
+    };
   }
 
   getSettings() {
@@ -555,6 +758,15 @@ class StorageService {
         ...DEFAULT_SETTINGS.detection,
         ...(settings.detection || {})
       },
+      maxRunTime: (() => {
+        const merged = { ...DEFAULT_SETTINGS.maxRunTime, ...(settings.maxRunTime || {}) };
+        // Migrate legacy minutes-based value to canonical milliseconds.
+        if (merged.ms == null && merged.minutes != null) {
+          merged.ms = Math.round(Number(merged.minutes) * 60 * 1000);
+        }
+        delete merged.minutes;
+        return merged;
+      })(),
       ai: {
         ...DEFAULT_SETTINGS.ai,
         ...(settings.ai || {})
@@ -693,6 +905,70 @@ class StorageService {
 
   moveImageToFolder(imageId, folderName) {
     this.setImageFolder(imageId, folderName);
+  }
+
+  getCustomSounds() {
+    if (!fs.existsSync(this.soundsDir)) {
+      fs.mkdirSync(this.soundsDir, { recursive: true });
+      return [];
+    }
+
+    const files = fs.readdirSync(this.soundsDir).filter((file) => /\.(wav|mp3|ogg|m4a|aac|flac)$/i.test(file));
+    return files.map((file) => {
+      const parsed = path.parse(file);
+      return {
+        id: `custom:${parsed.name}`,
+        label: `Custom: ${parsed.name}`,
+        type: 'custom',
+        path: path.join(this.soundsDir, file),
+        filename: file
+      };
+    }).sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  importCustomSound(sourcePath) {
+    if (!sourcePath || !fs.existsSync(sourcePath)) {
+      throw new Error('Sound file not found');
+    }
+
+    if (!fs.existsSync(this.soundsDir)) {
+      fs.mkdirSync(this.soundsDir, { recursive: true });
+    }
+
+    const parsed = path.parse(sourcePath);
+    const baseName = parsed.name.replace(/[^a-z0-9-_ ]/gi, '').trim() || `sound-${uuidv4().slice(0, 8)}`;
+    let candidate = `${baseName}${parsed.ext.toLowerCase()}`;
+    let counter = 2;
+    while (fs.existsSync(path.join(this.soundsDir, candidate))) {
+      candidate = `${baseName}-${counter}${parsed.ext.toLowerCase()}`;
+      counter++;
+    }
+
+    const destination = path.join(this.soundsDir, candidate);
+    fs.copyFileSync(sourcePath, destination);
+    const stored = path.parse(candidate);
+    return {
+      id: `custom:${stored.name}`,
+      label: `Custom: ${stored.name}`,
+      type: 'custom',
+      path: destination,
+      filename: candidate
+    };
+  }
+
+  deleteCustomSound(soundId) {
+    if (!soundId?.startsWith('custom:')) {
+      throw new Error('Only custom sounds can be deleted');
+    }
+
+    const targetName = soundId.slice('custom:'.length);
+    const sound = this.getCustomSounds().find((item) => item.id === soundId || path.parse(item.filename).name === targetName);
+    if (!sound?.path || !fs.existsSync(sound.path)) {
+      throw new Error('Custom sound not found');
+    }
+
+    fs.unlinkSync(sound.path);
+    return true;
   }
 
   getWorkflowsDir() {
