@@ -50,6 +50,8 @@
     "electron-updater": "^6.8.3",
     "html-react-parser": "^5.2.17",
     "opencv-wasm": "^4.3.0-10",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "uuid": "^9.0.1"
   },
   "build": {
