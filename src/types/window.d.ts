@@ -110,6 +110,7 @@ interface WorkflowAPI {
   checkForUpdates(): Promise<RuntimeRecord>;
   restartToUpdate(): Promise<void>;
   onUpdateAvailable(callback: (data: RuntimeRecord) => void): Unsubscribe;
+  onUpdateNotAvailable(callback: (data?: RuntimeRecord) => void): Unsubscribe;
   onUpdateDownloadProgress(callback: (data: RuntimeRecord) => void): Unsubscribe;
   onUpdateDownloaded(callback: (data: RuntimeRecord) => void): Unsubscribe;
   onUpdateError(callback: (data: RuntimeRecord) => void): Unsubscribe;

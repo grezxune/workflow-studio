@@ -471,6 +471,12 @@ contextBridge.exposeInMainWorld('workflowAPI', {
     return () => ipcRenderer.removeListener('update:available', subscription);
   },
 
+  onUpdateNotAvailable: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('update:not-available', subscription);
+    return () => ipcRenderer.removeListener('update:not-available', subscription);
+  },
+
   onUpdateDownloadProgress: (callback) => {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on('update:download-progress', subscription);

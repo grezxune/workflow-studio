@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import path from 'node:path';
 import { assertSafeFileId, resolvePathWithin } from '../../src/main/lib/safe-path';
 
 describe('safe-path', () => {
@@ -19,6 +20,6 @@ describe('safe-path', () => {
 
   test('allows a path within the base directory', () => {
     const resolved = resolvePathWithin('/tmp/workflow', 'abc.json');
-    expect(resolved).toBe('/tmp/workflow/abc.json');
+    expect(resolved).toBe(path.resolve('/tmp/workflow', 'abc.json'));
   });
 });
