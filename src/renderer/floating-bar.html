@@ -5,6 +5,25 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:;">
   <title>Execution Bar</title>
   <style>
+    :root {
+      --bg-top: #1b2233;
+      --bg-bottom: #0d111a;
+      --surface: rgba(255, 255, 255, 0.04);
+      --surface-strong: rgba(255, 255, 255, 0.07);
+      --border: rgba(148, 163, 200, 0.14);
+      --border-strong: rgba(148, 163, 200, 0.24);
+      --text: #f3f6fc;
+      --text-2: #9aa4bd;
+      --text-3: #5f6982;
+      --accent: #22d3ee;
+      --accent-deep: #06b6d4;
+      --amber: #fbbf24;
+      --amber-deep: #f59e0b;
+      --danger: #f87171;
+      --danger-deep: #ef4444;
+      --flash-color: #22d3ee;
+    }
+
     * {
       margin: 0;
       padding: 0;
@@ -15,280 +34,915 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: transparent;
+      background: var(--bg-bottom);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       user-select: none;
+      -webkit-font-smoothing: antialiased;
     }
 
     .bar {
+      --accent: #22d3ee;
+      --accent-deep: #06b6d4;
+      position: relative;
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      min-height: 100%;
+      width: 100%;
+      padding: 14px 18px 16px;
+      background:
+        radial-gradient(120% 140% at 18px 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 60%),
+        linear-gradient(177deg, var(--bg-top), var(--bg-bottom));
+      border: 1px solid var(--border);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    /* Soft moving glow tied to the accent colour */
+    .bar::before {
+      content: '';
+      position: absolute;
+      top: -60%;
+      left: -10%;
+      width: 45%;
+      height: 220%;
+      background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 22%, transparent), transparent);
+      filter: blur(14px);
+      opacity: 0.55;
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    .bar[data-state='paused'] {
+      --accent: #fbbf24;
+      --accent-deep: #f59e0b;
+    }
+
+    /* Variable-hit flash ring */
+    .bar.flashing {
+      animation: barFlash 1.15s ease-in-out infinite;
+    }
+
+    @keyframes barFlash {
+      0%, 100% { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), inset 0 0 0 0 transparent; }
+      50% { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), inset 0 0 0 2px color-mix(in srgb, var(--flash-color) 70%, transparent), 0 0 26px -2px color-mix(in srgb, var(--flash-color) 45%, transparent); }
+    }
+
+    /* ---------- Status orb ---------- */
+    .status {
+      flex-shrink: 0;
+      width: 22px;
       display: flex;
       align-items: center;
-      gap: 10px;
-      background: rgba(24, 24, 27, 0.95);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 10px;
-      padding: 6px 12px;
-      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
-      cursor: grab;
-      -webkit-app-region: drag;
-      min-height: 36px;
+      justify-content: center;
+      align-self: flex-start;
+      margin-top: 4px;
     }
 
-    .bar:active {
-      cursor: grabbing;
-    }
-
-    .indicator {
-      width: 8px;
-      height: 8px;
+    .orb {
+      position: relative;
+      width: 13px;
+      height: 13px;
       border-radius: 50%;
-      background: #06b6d4;
-      flex-shrink: 0;
-      animation: pulse 1.5s ease-in-out infinite;
+      background: radial-gradient(circle at 35% 30%, #ffffff, var(--accent) 55%, var(--accent-deep));
+      box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 75%, transparent);
     }
 
-    .indicator.paused {
-      background: #f59e0b;
-      animation: none;
+    .orb::after {
+      content: '';
+      position: absolute;
+      inset: -6px;
+      border-radius: 50%;
+      border: 1.5px solid color-mix(in srgb, var(--accent) 60%, transparent);
+      animation: orbRing 1.8s ease-out infinite;
     }
 
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
+    .bar[data-state='paused'] .orb::after { animation: none; opacity: 0.5; }
+
+    @keyframes orbRing {
+      0% { transform: scale(0.6); opacity: 0.9; }
+      100% { transform: scale(1.7); opacity: 0; }
     }
 
+    /* ---------- Info column ---------- */
     .info {
       flex: 1;
       min-width: 0;
       display: flex;
       flex-direction: column;
-      gap: 2px;
+      gap: 7px;
     }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    .eyebrow .eyebrow-text { line-height: 1; }
 
     .action-text {
-      font-size: 12px;
-      color: #e4e4e7;
-      white-space: nowrap;
+      font-size: clamp(15px, 1.7vw, 19px);
+      font-weight: 650;
+      color: var(--text);
+      line-height: 1.25;
+      letter-spacing: -0.01em;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
       overflow: hidden;
-      text-overflow: ellipsis;
     }
 
-    .sub-info {
+    .sub-row {
       display: flex;
       align-items: center;
-      gap: 8px;
-      font-size: 10px;
-      color: #a1a1aa;
+      gap: 10px;
+      flex-wrap: wrap;
+      min-height: 0;
     }
 
-    .wait-info {
+    /* ---------- Wait chip ---------- */
+    .wait-chip {
       display: none;
       align-items: center;
-      gap: 6px;
+      gap: 9px;
+      padding: 5px 11px 5px 9px;
+      border-radius: 999px;
+      background: var(--surface);
+      border: 1px solid var(--border);
     }
 
-    .wait-info.visible {
-      display: flex;
+    .wait-chip.visible { display: inline-flex; }
+
+    .wait-spinner {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+      border-top-color: var(--accent);
+      animation: spin 0.8s linear infinite;
     }
 
-    .wait-bar-track {
-      width: 60px;
-      height: 3px;
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .wait-track {
+      width: 78px;
+      height: 5px;
+      border-radius: 999px;
       background: rgba(255, 255, 255, 0.1);
-      border-radius: 2px;
       overflow: hidden;
     }
 
-    .wait-bar-fill {
+    .wait-fill {
       height: 100%;
-      background: #06b6d4;
-      border-radius: 2px;
       width: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--accent-deep), var(--accent));
       transition: width 60ms linear;
     }
 
     .wait-time {
+      font-size: 12.5px;
+      font-weight: 650;
+      color: var(--accent);
       font-variant-numeric: tabular-nums;
-      color: #06b6d4;
-      font-weight: 600;
-      font-size: 10px;
+      min-width: 30px;
     }
 
-    .stop-timer {
-      display: none;
-      font-size: 10px;
-      font-variant-numeric: tabular-nums;
-      color: #f59e0b;
+    /* ---------- Auto-stop control ---------- */
+    .autostop { display: inline-flex; align-items: center; }
+
+    .autostop > .autostop-trigger,
+    .autostop > .autostop-editor,
+    .autostop > .autostop-active { display: none; }
+
+    .autostop[data-mode='idle'] > .autostop-trigger { display: inline-flex; }
+    .autostop[data-mode='editing'] > .autostop-editor { display: inline-flex; }
+    .autostop[data-mode='active'] > .autostop-active { display: inline-flex; }
+
+    .autostop-trigger {
+      align-items: center;
+      gap: 6px;
+      padding: 5px 11px;
+      border-radius: 999px;
+      background: transparent;
+      border: 1px dashed var(--border-strong);
+      color: var(--text-2);
+      font-size: 12px;
       font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: color 0.14s, border-color 0.14s, background 0.14s;
+    }
+
+    .autostop-trigger:hover {
+      color: var(--text);
+      border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+      background: color-mix(in srgb, var(--accent) 10%, transparent);
+    }
+
+    .autostop-trigger svg { width: 13px; height: 13px; }
+
+    .autostop-editor {
+      align-items: center;
+      gap: 7px;
+      padding: 5px 7px 5px 11px;
+      border-radius: 999px;
+      background: var(--surface-strong);
+      border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+
+    .ae-label {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--text-2);
       white-space: nowrap;
     }
 
-    .stop-timer.visible {
-      display: inline;
+    .ae-time {
+      width: 92px;
+      padding: 3px 6px;
+      border-radius: 7px;
+      border: 1px solid var(--border-strong);
+      background: rgba(0, 0, 0, 0.28);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 12.5px;
+      font-variant-numeric: tabular-nums;
+      color-scheme: dark;
     }
 
+    .ae-time:focus { outline: none; border-color: var(--accent); }
+
+    .ae-dash { color: var(--text-3); font-size: 12px; }
+
+    .ae-set, .ae-cancel {
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .ae-set {
+      padding: 5px 12px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, var(--accent), var(--accent-deep));
+      color: #04181d;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .ae-set:hover { filter: brightness(1.08); }
+
+    .ae-cancel {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: transparent;
+      color: var(--text-3);
+    }
+
+    .ae-cancel:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+    .ae-cancel svg { width: 12px; height: 12px; }
+
+    .autostop-active {
+      align-items: center;
+      gap: 9px;
+      padding: 4px 6px 4px 11px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 18%, transparent), color-mix(in srgb, var(--accent) 7%, transparent));
+      border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+    }
+
+    .aa-clock {
+      display: inline-flex;
+      color: var(--accent);
+    }
+    .aa-clock svg { width: 14px; height: 14px; }
+
+    .aa-main {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 8px;
+      cursor: pointer;
+      min-width: 0;
+    }
+
+    .aa-time {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .aa-count {
+      font-size: 12px;
+      font-weight: 650;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .aa-clear {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      color: var(--text-3);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .aa-clear:hover { background: rgba(0, 0, 0, 0.25); color: var(--danger); }
+    .aa-clear svg { width: 12px; height: 12px; }
+
+    /* ---------- Variables ---------- */
+    .variables {
+      display: none;
+      align-items: center;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+
+    .variables.visible { display: flex; }
+
+    .variable-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-2);
+      font-size: 12px;
+      line-height: 1;
+      max-width: 100%;
+      min-width: 0;
+    }
+
+    .variable-content {
+      display: inline-flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .variable-content > span:first-child {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 600;
+    }
+
+    .variable-meta {
+      font-size: 10.5px;
+      color: var(--text-3);
+      font-variant-numeric: tabular-nums;
+      line-height: 1.2;
+    }
+
+    .variable-pill.active {
+      background: color-mix(in srgb, var(--pill-color, #22d3ee) 18%, transparent);
+      border-color: color-mix(in srgb, var(--pill-color, #22d3ee) 55%, transparent);
+      color: var(--text);
+      animation: pillPulse 1.2s ease-in-out infinite;
+    }
+
+    .variable-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: var(--pill-color, #22d3ee);
+      box-shadow: 0 0 10px color-mix(in srgb, var(--pill-color, #22d3ee) 60%, transparent);
+    }
+
+    .variable-reset {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 1px solid var(--border-strong);
+      background: rgba(0, 0, 0, 0.22);
+      color: inherit;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      flex-shrink: 0;
+    }
+    .variable-reset:hover { background: rgba(255, 255, 255, 0.12); }
+    .variable-reset svg { width: 11px; height: 11px; }
+
+    /* ---------- Actions ---------- */
     .actions {
       display: flex;
-      gap: 4px;
+      align-items: center;
+      gap: 8px;
       flex-shrink: 0;
-      -webkit-app-region: no-drag;
+      align-self: flex-start;
+    }
+
+    .divider {
+      width: 1px;
+      height: 24px;
+      background: var(--border);
+      margin: 0 1px;
     }
 
     .btn {
-      width: 26px;
-      height: 26px;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      background: transparent;
-      color: #a1a1aa;
-      border-radius: 6px;
+      width: 40px;
+      height: 40px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-2);
+      border-radius: 11px;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      transition: all 0.15s ease;
+      transition: transform 0.14s, background 0.14s, color 0.14s, border-color 0.14s, box-shadow 0.14s;
       padding: 0;
     }
 
     .btn:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: #e4e4e7;
+      background: var(--surface-strong);
+      color: var(--text);
+      border-color: var(--border-strong);
+      transform: translateY(-1px);
     }
 
-    .btn svg {
-      width: 13px;
-      height: 13px;
+    .btn:active { transform: translateY(0); }
+
+    .btn svg { width: 18px; height: 18px; }
+
+    .btn-primary:hover {
+      color: var(--accent);
+      border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+      box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--accent) 80%, transparent);
     }
 
     .btn-danger {
-      border-color: rgba(239, 68, 68, 0.3);
-      color: #ef4444;
+      border-color: color-mix(in srgb, var(--danger) 32%, transparent);
+      color: var(--danger);
+    }
+    .btn-danger:hover {
+      background: color-mix(in srgb, var(--danger) 16%, transparent);
+      color: #fca5a5;
+      border-color: color-mix(in srgb, var(--danger) 50%, transparent);
+      box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--danger) 70%, transparent);
     }
 
-    .btn-danger:hover {
-      background: rgba(239, 68, 68, 0.15);
-      color: #f87171;
+    /* ---------- Live wire (bottom accent) ---------- */
+    .live-wire {
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      height: 2px;
+      width: 100%;
+      overflow: hidden;
+      z-index: 1;
+    }
+
+    .live-wire::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 85%, transparent), transparent);
+      width: 38%;
+      animation: wireRun 2.2s ease-in-out infinite;
+    }
+
+    .bar[data-state='paused'] .live-wire::before { animation-play-state: paused; opacity: 0.6; }
+
+    @keyframes wireRun {
+      0% { left: -38%; }
+      100% { left: 100%; }
+    }
+
+    /* When auto-stop is armed, the wire becomes a draining progress toward the stop time */
+    .bar[data-autostop='active'] .live-wire::before { display: none; }
+    .live-wire .wire-drain {
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent-deep), var(--accent));
+      box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 70%, transparent);
+      transition: width 0.5s linear;
+      opacity: 0;
+    }
+    .bar[data-autostop='active'] .live-wire .wire-drain { opacity: 1; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .orb::after, .live-wire::before, .variable-pill.active, .wait-spinner, .bar.flashing { animation: none !important; }
+    }
+
+    /* ---------- Responsive ---------- */
+    @media (max-width: 600px) {
+      .bar { flex-direction: column; align-items: stretch; gap: 12px; }
+      .status { display: none; }
+      .actions { justify-content: flex-end; }
+      .ae-time { width: 84px; }
     }
   </style>
 </head>
 <body>
-  <div class="bar" id="bar">
-    <div class="indicator" id="indicator"></div>
+  <div class="bar" id="bar" data-state="running" data-autostop="off">
+    <div class="status"><div class="orb"></div></div>
+
     <div class="info">
-      <div class="action-text" id="action-text">Running...</div>
-      <div class="sub-info">
-        <div class="wait-info" id="wait-info">
-          <div class="wait-bar-track">
-            <div class="wait-bar-fill" id="wait-fill"></div>
-          </div>
+      <span class="eyebrow" id="eyebrow"><span class="eyebrow-text">Running</span></span>
+      <div class="action-text" id="action-text">Running…</div>
+      <div class="sub-row">
+        <div class="wait-chip" id="wait-info">
+          <span class="wait-spinner"></span>
+          <div class="wait-track"><div class="wait-fill" id="wait-fill"></div></div>
           <span class="wait-time" id="wait-time"></span>
         </div>
-        <span class="stop-timer" id="stop-timer"></span>
+
+        <div class="autostop" id="autostop" data-mode="idle">
+          <button class="autostop-trigger" id="autostop-trigger" title="Schedule an automatic stop">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/>
+            </svg>
+            Set stop time
+          </button>
+
+          <div class="autostop-editor" id="autostop-editor">
+            <span class="ae-label">Stop between</span>
+            <input type="time" id="autostop-from" class="ae-time" step="60">
+            <span class="ae-dash">–</span>
+            <input type="time" id="autostop-to" class="ae-time" step="60">
+            <button class="ae-set" id="autostop-set">Set</button>
+            <button class="ae-cancel" id="autostop-cancel" title="Cancel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+
+          <div class="autostop-active" id="autostop-active">
+            <span class="aa-clock">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/>
+              </svg>
+            </span>
+            <span class="aa-main" id="autostop-main" title="Click to change">
+              <span class="aa-time" id="autostop-time">—</span>
+              <span class="aa-count" id="autostop-count"></span>
+            </span>
+            <button class="aa-clear" id="autostop-clear" title="Cancel auto-stop">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
       </div>
+
+      <div class="variables" id="variables"></div>
     </div>
+
     <div class="actions">
-      <button class="btn" id="btn-pause" title="Pause">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="6" y="4" width="4" height="16"/>
-          <rect x="14" y="4" width="4" height="16"/>
-        </svg>
+      <button class="btn btn-primary" id="btn-pause" title="Pause">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
       </button>
       <button class="btn btn-danger" id="btn-stop" title="Stop">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-        </svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
       </button>
-      <button class="btn" id="btn-expand" title="Show details">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="15 3 21 3 21 9"/>
-          <polyline points="9 21 3 21 3 15"/>
-          <line x1="21" y1="3" x2="14" y2="10"/>
-          <line x1="3" y1="21" x2="10" y2="14"/>
-        </svg>
+      <div class="divider"></div>
+      <button class="btn" id="btn-expand" title="Show full window">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
       </button>
     </div>
+
+    <div class="live-wire"><div class="wire-drain" id="wire-drain"></div></div>
   </div>
 
   <script>
-    const api = window.overlayAPI?.floatingBar;
-    if (!api) {
-      throw new Error('overlayAPI.floatingBar is unavailable');
-    }
+    // Sandboxed overlay bridge (overlayAPI from the overlay preload). Guarded so
+    // this page can also be opened in a plain browser for design preview (api null).
+    const api = window.overlayAPI?.floatingBar || null;
+    const send = (channel, payload) => {
+      if (!api) return;
+      switch (channel) {
+        case 'floating-bar:pause': return api.sendPause();
+        case 'floating-bar:stop': return api.sendStop();
+        case 'floating-bar:expand': return api.sendExpand();
+        case 'floating-bar:reset-variable': return api.sendResetVariable(payload);
+        case 'floating-bar:set-stop-time': return api.sendSetStopTime(payload);
+        case 'floating-bar:clear-stop-time': return api.sendClearStopTime();
+      }
+    };
+    const on = (channel, handler) => {
+      if (!api) return;
+      const wrap = (data) => handler(null, data);
+      switch (channel) {
+        case 'floating-bar:update-action': return api.onUpdateAction(wrap);
+        case 'floating-bar:update-pause': return api.onUpdatePause(wrap);
+        case 'floating-bar:wait-start': return api.onWaitStart(wrap);
+        case 'floating-bar:wait-tick': return api.onWaitTick(wrap);
+        case 'floating-bar:wait-hide': return api.onWaitHide(wrap);
+        case 'floating-bar:stop-timer': return api.onStopTimer(wrap);
+        case 'floating-bar:variables-sync': return api.onVariablesSync(wrap);
+        case 'floating-bar:variable-changed': return api.onVariableChanged(wrap);
+      }
+    };
 
-    const actionText = document.getElementById('action-text');
-    const indicator = document.getElementById('indicator');
-    const waitInfo = document.getElementById('wait-info');
-    const waitFill = document.getElementById('wait-fill');
-    const waitTime = document.getElementById('wait-time');
-    const stopTimer = document.getElementById('stop-timer');
-    const btnPause = document.getElementById('btn-pause');
-    const btnStop = document.getElementById('btn-stop');
-    const btnExpand = document.getElementById('btn-expand');
+    const el = (id) => document.getElementById(id);
+    const bar = el('bar');
+    const eyebrowText = document.querySelector('#eyebrow .eyebrow-text');
+    const actionText = el('action-text');
+    const waitInfo = el('wait-info');
+    const waitFill = el('wait-fill');
+    const waitTime = el('wait-time');
+    const variablesEl = el('variables');
+    const btnPause = el('btn-pause');
+    const btnStop = el('btn-stop');
+    const btnExpand = el('btn-expand');
+    const wireDrain = el('wire-drain');
+
+    const autostop = el('autostop');
+    const autostopTrigger = el('autostop-trigger');
+    const autostopFrom = el('autostop-from');
+    const autostopTo = el('autostop-to');
+    const autostopSet = el('autostop-set');
+    const autostopCancel = el('autostop-cancel');
+    const autostopMain = el('autostop-main');
+    const autostopClear = el('autostop-clear');
+    const autostopTime = el('autostop-time');
+    const autostopCount = el('autostop-count');
 
     const pauseIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
     const resumeIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
 
     let isPaused = false;
+    let variables = [];
+    let variableTicker = null;
+    let localStopTimer = null; // only used in browser-preview mode (no ipc)
 
-    // Receive updates from main process
-    api.onUpdateAction((data) => {
-      actionText.textContent = data.text || 'Running...';
-    });
+    /* ===================== State setters ===================== */
+    function setAction(text) {
+      actionText.textContent = text || 'Running…';
+    }
 
-    api.onUpdatePause((paused) => {
+    function setPaused(paused) {
       isPaused = paused;
-      indicator.classList.toggle('paused', paused);
+      bar.dataset.state = paused ? 'paused' : 'running';
+      eyebrowText.textContent = paused ? 'Paused' : 'Running';
       btnPause.innerHTML = paused ? resumeIcon : pauseIcon;
       btnPause.title = paused ? 'Resume' : 'Pause';
-    });
+    }
 
-    api.onWaitStart((data) => {
+    /* ===================== Wait countdown ===================== */
+    function showWait(duration) {
       waitInfo.classList.add('visible');
       waitFill.style.transition = 'none';
       waitFill.style.width = '100%';
-      waitTime.textContent = formatMs(data.duration);
-    });
+      waitTime.textContent = formatMs(duration);
+    }
 
-    api.onWaitTick((data) => {
-      if (data.remaining <= 0 && !data.paused) {
-        waitInfo.classList.remove('visible');
+    function tickWait(duration, remaining, paused) {
+      if (remaining <= 0 && !paused) { hideWait(); return; }
+      const pct = Math.max(0, Math.min(100, (remaining / duration) * 100));
+      waitInfo.classList.add('visible');
+      waitFill.style.transition = paused ? 'none' : 'width 60ms linear';
+      waitFill.style.width = `${pct}%`;
+      waitTime.textContent = paused ? `${formatMs(remaining)} ⏸` : formatMs(remaining);
+    }
+
+    function hideWait() { waitInfo.classList.remove('visible'); }
+
+    /* ===================== Auto-stop ===================== */
+    function setAutostopMode(mode) { autostop.dataset.mode = mode; }
+
+    // Render the active auto-stop chip from a payload pushed by the main window.
+    function setStopTimer(data) {
+      if (!data || !data.visible) {
+        if (autostop.dataset.mode === 'active') setAutostopMode('idle');
+        bar.dataset.autostop = 'off';
+        wireDrain.style.width = '0%';
         return;
       }
-      const pct = (data.remaining / data.duration) * 100;
-      waitFill.style.transition = data.paused ? 'none' : 'width 60ms linear';
-      waitFill.style.width = `${pct}%`;
-      waitTime.textContent = data.paused ? `${formatMs(data.remaining)} ⏸` : formatMs(data.remaining);
-    });
-
-    api.onWaitHide(() => {
-      waitInfo.classList.remove('visible');
-    });
-
-    api.onStopTimer((data) => {
-      if (data.visible && data.text) {
-        stopTimer.textContent = data.text;
-        stopTimer.classList.add('visible');
-      } else {
-        stopTimer.classList.remove('visible');
+      bar.dataset.autostop = 'active';
+      // Don't yank the user out of the range editor while they're mid-edit;
+      // the values below still refresh underneath and show when they're done.
+      if (autostop.dataset.mode !== 'editing') setAutostopMode('active');
+      autostopTime.textContent = data.targetLabel || (data.text || '').replace(/^[^\d]*/, '') || 'Scheduled';
+      autostopCount.textContent = data.countdown || data.text || '';
+      autostopMain.title = data.rangeLabel ? `Picked ${data.rangeLabel} · click to change` : 'Click to change';
+      if (typeof data.fraction === 'number') {
+        wireDrain.style.width = `${Math.max(0, Math.min(100, data.fraction * 100))}%`;
       }
+    }
+
+    function openEditor() {
+      // Sensible defaults: a 30–60 min window from now, rounded to 5 minutes.
+      if (!autostopFrom.value) autostopFrom.value = roundedTime(30);
+      if (!autostopTo.value) autostopTo.value = roundedTime(60);
+      setAutostopMode('editing');
+      autostopFrom.focus();
+    }
+
+    function commitEditor() {
+      const from = autostopFrom.value;
+      const to = autostopTo.value;
+      if (!from && !to) return;
+      // Normalise: a lone value becomes an exact stop.
+      const payload = { from: from || to, to: (from && to) ? to : '' };
+      send('floating-bar:set-stop-time', payload);
+
+      // Optimistic feedback; the authoritative values arrive via the stop-timer push.
+      setAutostopMode('active');
+      bar.dataset.autostop = 'active';
+      autostopTime.textContent = '…';
+      autostopCount.textContent = 'scheduling';
+
+      if (!ipcRenderer) previewSchedule(payload.from, payload.to); // browser preview only
+    }
+
+    function cancelEditor() {
+      setAutostopMode(bar.dataset.autostop === 'active' ? 'active' : 'idle');
+    }
+
+    function clearAutostop() {
+      send('floating-bar:clear-stop-time');
+      setAutostopMode('idle');
+      bar.dataset.autostop = 'off';
+      wireDrain.style.width = '0%';
+      if (localStopTimer) { clearInterval(localStopTimer); localStopTimer = null; }
+    }
+
+    autostopTrigger.addEventListener('click', openEditor);
+    autostopSet.addEventListener('click', commitEditor);
+    autostopCancel.addEventListener('click', cancelEditor);
+    autostopClear.addEventListener('click', clearAutostop);
+    autostopMain.addEventListener('click', openEditor);
+    [autostopFrom, autostopTo].forEach((input) => {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') commitEditor();
+        if (e.key === 'Escape') cancelEditor();
+      });
     });
 
-    // Button actions -> send to main
-    btnPause.addEventListener('click', () => {
-      api.sendPause();
+    /* ===================== Buttons ===================== */
+    btnPause.addEventListener('click', () => send('floating-bar:pause'));
+    btnStop.addEventListener('click', () => send('floating-bar:stop'));
+    btnExpand.addEventListener('click', () => send('floating-bar:expand'));
+
+    /* ===================== IPC wiring ===================== */
+    on('floating-bar:update-action', (e, data) => setAction(data.text));
+    on('floating-bar:update-pause', (e, paused) => setPaused(paused));
+    on('floating-bar:wait-start', (e, data) => showWait(data.duration));
+    on('floating-bar:wait-tick', (e, data) => tickWait(data.duration, data.remaining, data.paused));
+    on('floating-bar:wait-hide', () => hideWait());
+    on('floating-bar:stop-timer', (e, data) => setStopTimer(data));
+    on('floating-bar:variables-sync', (e, data) => {
+      variables = Array.isArray(data?.variables) ? data.variables : [];
+      renderVariables();
+    });
+    on('floating-bar:variable-changed', (e, data) => {
+      const next = data?.variable;
+      if (!next?.id) return;
+      const i = variables.findIndex((v) => v.id === next.id);
+      if (i === -1) variables.push(next); else variables[i] = next;
+      renderVariables();
     });
 
-    btnStop.addEventListener('click', () => {
-      api.sendStop();
-    });
+    /* ===================== Variables ===================== */
+    function renderVariables() {
+      const visible = variables.filter((v) => {
+        const target = v.indicatorTarget || 'both';
+        return target === 'floating-bar' || target === 'both';
+      });
 
-    btnExpand.addEventListener('click', () => {
-      api.sendExpand();
-    });
+      variablesEl.innerHTML = visible.map((v) => {
+        const active = !!v.value;
+        const safeName = escapeHtml(v.name || 'Variable');
+        const meta = active && v.triggeredAt
+          ? `<span class="variable-meta">Hit ${escapeHtml(formatTimestamp(v.triggeredAt))} · ${escapeHtml(formatTimeSince(v.triggeredAt))}</span>`
+          : '';
+        return `
+          <div class="variable-pill ${active ? 'active' : ''}" style="--pill-color:${escapeHtml(v.color || '#22d3ee')}">
+            <span class="variable-dot"></span>
+            <span class="variable-content"><span>${safeName}</span>${meta}</span>
+            ${active ? `
+              <button class="variable-reset" data-variable-id="${escapeHtml(v.id)}" title="Reset ${safeName}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 3 3 9 9 9"/></svg>
+              </button>` : ''}
+          </div>`;
+      }).join('');
 
+      variablesEl.classList.toggle('visible', visible.length > 0);
+      if (visible.some((v) => v.value && v.triggeredAt)) startVariableTicker(); else stopVariableTicker();
+
+      const flashing = visible.find((v) => v.value);
+      if (flashing) {
+        bar.style.setProperty('--flash-color', flashing.color || '#22d3ee');
+        bar.classList.add('flashing');
+      } else {
+        bar.classList.remove('flashing');
+      }
+
+      variablesEl.querySelectorAll('[data-variable-id]').forEach((btn) => {
+        btn.addEventListener('click', () => send('floating-bar:reset-variable', btn.dataset.variableId));
+      });
+    }
+
+    function startVariableTicker() {
+      stopVariableTicker();
+      variableTicker = setInterval(renderVariables, 1000);
+    }
+    function stopVariableTicker() {
+      if (variableTicker) { clearInterval(variableTicker); variableTicker = null; }
+    }
+
+    /* ===================== Helpers ===================== */
     function formatMs(ms) {
       if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
       return `${Math.round(ms)}ms`;
     }
+
+    function roundedTime(minutesFromNow) {
+      const d = new Date(Date.now() + minutesFromNow * 60000);
+      d.setMinutes(Math.round(d.getMinutes() / 5) * 5, 0, 0);
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    }
+
+    function formatTimestamp(iso) {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return 'unknown';
+      return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+    }
+
+    function formatTimeSince(iso) {
+      const d = new Date(iso);
+      const diff = Date.now() - d.getTime();
+      if (Number.isNaN(d.getTime()) || diff < 0) return 'just now';
+      const s = Math.floor(diff / 1000);
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+      if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m ago`;
+      if (m > 0) return `${m}m ${String(sec).padStart(2, '0')}s ago`;
+      return `${sec}s ago`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+    }
+
+    /* ===================== Browser-preview fallback (no Electron) ===================== */
+    // Lets the design be screenshotted via the renderer-preview server. Never runs in the app.
+    function previewSchedule(from, to) {
+      const parse = (t) => { const [h, m] = t.split(':').map(Number); const d = new Date(); d.setHours(h, m, 0, 0); if (d <= new Date()) d.setDate(d.getDate() + 1); return d; };
+      const a = parse(from);
+      const b = to ? parse(to) : a;
+      const lo = Math.max(a.getTime(), Date.now());
+      const hi = Math.max(b.getTime(), lo);
+      const target = new Date(lo + Math.random() * (hi - lo));
+      const setAt = Date.now();
+      const span = Math.max(1, target.getTime() - setAt);
+      const tick = () => {
+        const remaining = target.getTime() - Date.now();
+        if (remaining <= 0) { clearAutostop(); return; }
+        setStopTimer({
+          visible: true,
+          targetLabel: target.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+          countdown: previewCountdown(remaining),
+          remaining,
+          fraction: remaining / span,
+          rangeLabel: to ? `between ${from} and ${to}` : `at ${from}`
+        });
+      };
+      tick();
+      if (localStopTimer) clearInterval(localStopTimer);
+      localStopTimer = setInterval(tick, 1000);
+    }
+
+    function previewCountdown(ms) {
+      const s = Math.floor(ms / 1000);
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+      if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m ${String(sec).padStart(2, '0')}s`;
+      if (m > 0) return `${m}m ${String(sec).padStart(2, '0')}s`;
+      return `${sec}s`;
+    }
+
+    // Expose internals so design previews can drive the bar without Electron.
+    window.__bar = { setAction, setPaused, showWait, tickWait, hideWait, setStopTimer, renderVariables,
+      setVariables: (v) => { variables = v || []; renderVariables(); }, openEditor };
   </script>
 </body>
 </html>

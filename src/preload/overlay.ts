@@ -20,9 +20,16 @@ contextBridge.exposeInMainWorld('overlayAPI', {
     onWaitHide: (callback: DataCallback<void>) => subscribe('floating-bar:wait-hide', callback),
     onStopTimer: (callback: DataCallback<{ visible?: boolean; text?: string }>) =>
       subscribe('floating-bar:stop-timer', callback),
+    onVariablesSync: (callback: DataCallback<{ variables?: unknown[] }>) =>
+      subscribe('floating-bar:variables-sync', callback),
+    onVariableChanged: (callback: DataCallback<{ variable?: Record<string, unknown> }>) =>
+      subscribe('floating-bar:variable-changed', callback),
     sendPause: () => ipcRenderer.send('floating-bar:pause'),
     sendStop: () => ipcRenderer.send('floating-bar:stop'),
-    sendExpand: () => ipcRenderer.send('floating-bar:expand')
+    sendExpand: () => ipcRenderer.send('floating-bar:expand'),
+    sendResetVariable: (variableId: string) => ipcRenderer.send('floating-bar:reset-variable', variableId),
+    sendSetStopTime: (payload: { from: string; to?: string }) => ipcRenderer.send('floating-bar:set-stop-time', payload),
+    sendClearStopTime: () => ipcRenderer.send('floating-bar:clear-stop-time')
   },
 
   workflowPreview: {
