@@ -1047,7 +1047,20 @@ const analyticsState = {
     isLoading: false,
     liveRun: null,
     liveTicker: null,
-    renderTimer: null
+    renderTimer: null,
+    liveFrame: null,
+    needsLiveStructureRender: false,
+    overallCache: null,
+    workflowCache: new Map(),
+    cacheLoaded: false,
+    dataRequestSeq: 0,
+    lastRendered: {
+        summaryGrid: '',
+        workflowSelect: '',
+        workflowTable: '',
+        workflowDetail: '',
+        recentRuns: ''
+    }
 };
 const analyticsElements = {
     summaryGrid: null,
@@ -1064,59 +1077,108 @@ function initAnalyticsView() {
     analyticsElements.workflowDetail = document.getElementById('workflow-analytics-detail');
     analyticsElements.recentRuns = document.getElementById('analytics-recent-runs');
     analyticsElements.refreshButton = document.getElementById('btn-refresh-analytics');
-    analyticsElements.refreshButton?.addEventListener('click', renderAnalyticsDashboard);
+    analyticsElements.refreshButton?.addEventListener('click', () => {
+        renderAnalyticsDashboard({ showLoading: true });
+    });
     analyticsElements.workflowSelect?.addEventListener('change', () => {
         analyticsState.selectedWorkflowId = analyticsElements.workflowSelect.value || null;
-        renderAnalyticsDashboard();
+        renderAnalyticsDashboard({ showLoading: false });
     });
 }
 function showWorkflowAnalytics(workflowId) {
     analyticsState.selectedWorkflowId = workflowId;
     if (state.currentView === 'analytics') {
-        renderAnalyticsDashboard();
+        renderAnalyticsDashboard({ showLoading: false });
     }
     else {
         navigateTo('analytics');
     }
 }
-async function renderAnalyticsDashboard() {
+async function renderAnalyticsDashboard(options = {}) {
+    await refreshAnalyticsDashboardData(options);
+}
+async function refreshAnalyticsDashboardData(options = {}) {
     if (!analyticsElements.summaryGrid)
         return;
     if (!window.workflowAPI?.getOverallAnalytics)
         return;
-    analyticsState.isLoading = true;
-    setAnalyticsLoadingState(true);
+    const showLoading = options.showLoading !== false;
+    const requestSeq = ++analyticsState.dataRequestSeq;
+    if (showLoading) {
+        analyticsState.isLoading = true;
+        setAnalyticsLoadingState(true);
+    }
     try {
-        let overall = await window.workflowAPI.getOverallAnalytics();
-        overall = mergeLiveRunIntoOverall(overall);
-        ensureSelectedWorkflow(overall);
-        renderWorkflowSelect(overall);
-        let workflowAnalytics = analyticsState.selectedWorkflowId
+        const overall = await window.workflowAPI.getOverallAnalytics();
+        if (requestSeq !== analyticsState.dataRequestSeq)
+            return;
+        analyticsState.overallCache = overall || {};
+        analyticsState.cacheLoaded = true;
+        const snapshotOverall = getAnalyticsOverallSnapshot();
+        ensureSelectedWorkflow(snapshotOverall);
+        const workflowAnalytics = analyticsState.selectedWorkflowId
             ? await window.workflowAPI.getWorkflowAnalytics(analyticsState.selectedWorkflowId)
             : null;
-        workflowAnalytics = mergeLiveRunIntoWorkflowAnalytics(workflowAnalytics);
-        renderOverallSummary(overall);
-        renderWorkflowPerformanceTable(overall);
-        renderWorkflowDetail(workflowAnalytics);
-        renderRecentRuns(overall.recentRuns || []);
+        if (requestSeq !== analyticsState.dataRequestSeq)
+            return;
+        if (analyticsState.selectedWorkflowId) {
+            analyticsState.workflowCache.set(analyticsState.selectedWorkflowId, workflowAnalytics || null);
+        }
+        renderCachedAnalyticsDashboard();
     }
     catch (error) {
         console.error('[Analytics] Failed to render:', error);
-        analyticsElements.summaryGrid.innerHTML = '<div class="analytics-empty">Unable to load analytics</div>';
-        analyticsElements.workflowTable.innerHTML = '';
-        analyticsElements.workflowDetail.innerHTML = '';
-        analyticsElements.recentRuns.innerHTML = '';
+        if (!analyticsState.cacheLoaded) {
+            setAnalyticsSectionHtml('summaryGrid', analyticsElements.summaryGrid, '<div class="analytics-empty">Unable to load analytics</div>');
+            setAnalyticsSectionHtml('workflowTable', analyticsElements.workflowTable, '');
+            setAnalyticsSectionHtml('workflowDetail', analyticsElements.workflowDetail, '');
+            setAnalyticsSectionHtml('recentRuns', analyticsElements.recentRuns, '');
+        }
     }
     finally {
-        analyticsState.isLoading = false;
-        setAnalyticsLoadingState(false);
+        if (showLoading) {
+            analyticsState.isLoading = false;
+            setAnalyticsLoadingState(false);
+        }
     }
+}
+function renderCachedAnalyticsDashboard() {
+    if (!analyticsElements.summaryGrid)
+        return;
+    const overall = getAnalyticsOverallSnapshot();
+    ensureSelectedWorkflow(overall);
+    const workflowAnalytics = getAnalyticsWorkflowSnapshot();
+    renderWorkflowSelect(overall);
+    renderOverallSummary(overall);
+    renderWorkflowPerformanceTable(overall);
+    renderWorkflowDetail(workflowAnalytics);
+    renderRecentRuns(overall.recentRuns || []);
+}
+function getAnalyticsOverallSnapshot() {
+    return mergeLiveRunIntoOverall(analyticsState.overallCache || {});
+}
+function getAnalyticsWorkflowSnapshot() {
+    if (!analyticsState.selectedWorkflowId)
+        return null;
+    const cached = analyticsState.workflowCache.has(analyticsState.selectedWorkflowId)
+        ? analyticsState.workflowCache.get(analyticsState.selectedWorkflowId)
+        : null;
+    return mergeLiveRunIntoWorkflowAnalytics(cached);
 }
 function setAnalyticsLoadingState(loading) {
     if (analyticsElements.refreshButton) {
         analyticsElements.refreshButton.disabled = loading;
         analyticsElements.refreshButton.classList.toggle('checking', loading);
     }
+}
+function setAnalyticsSectionHtml(sectionKey, element, html) {
+    if (!element)
+        return false;
+    if (analyticsState.lastRendered[sectionKey] === html)
+        return false;
+    analyticsState.lastRendered[sectionKey] = html;
+    element.innerHTML = html;
+    return true;
 }
 function setAnalyticsLiveExecution(execution, status = 'running') {
     if (!execution?.workflowId)
@@ -1141,7 +1203,7 @@ function setAnalyticsLiveExecution(execution, status = 'running') {
         isLive: true
     };
     startAnalyticsLiveTicker();
-    requestAnalyticsDashboardRefresh();
+    requestAnalyticsLiveRender({ structural: true });
 }
 function updateAnalyticsLiveExecution(patch = {}) {
     if (!analyticsState.liveRun)
@@ -1152,7 +1214,7 @@ function updateAnalyticsLiveExecution(patch = {}) {
         status: normalizeAnalyticsStatus(patch.status || analyticsState.liveRun.status)
     };
     updateAnalyticsLiveDuration();
-    requestAnalyticsDashboardRefresh();
+    requestAnalyticsLiveRender({ structural: patch.status !== undefined });
 }
 function completeAnalyticsLiveExecution(status = 'completed', patch = {}) {
     if (!analyticsState.liveRun)
@@ -1168,24 +1230,39 @@ function completeAnalyticsLiveExecution(status = 'completed', patch = {}) {
         error: finalStatus === 'error' ? patch.error || analyticsState.liveRun.error || null : null
     };
     stopAnalyticsLiveTicker();
-    requestAnalyticsDashboardRefresh();
+    requestAnalyticsLiveRender({ structural: true });
     const liveId = analyticsState.liveRun.id;
     setTimeout(() => {
         if (analyticsState.liveRun?.id === liveId && isTerminalAnalyticsStatus(analyticsState.liveRun.status)) {
             analyticsState.liveRun = null;
-            requestAnalyticsDashboardRefresh();
+            requestAnalyticsLiveRender({ structural: true });
         }
     }, 5000);
 }
-function requestAnalyticsDashboardRefresh() {
+function requestAnalyticsDashboardRefresh(options = {}) {
     if (state.currentView !== 'analytics')
         return;
     if (analyticsState.renderTimer)
         return;
     analyticsState.renderTimer = setTimeout(() => {
         analyticsState.renderTimer = null;
-        renderAnalyticsDashboard();
-    }, 0);
+        renderAnalyticsDashboard({ showLoading: false });
+    }, options.delay ?? 120);
+}
+function requestAnalyticsLiveRender(options = {}) {
+    if (state.currentView !== 'analytics')
+        return;
+    analyticsState.needsLiveStructureRender = analyticsState.needsLiveStructureRender || !!options.structural;
+    if (analyticsState.liveFrame)
+        return;
+    analyticsState.liveFrame = requestAnimationFrame(() => {
+        analyticsState.liveFrame = null;
+        if (analyticsState.needsLiveStructureRender) {
+            analyticsState.needsLiveStructureRender = false;
+            renderCachedAnalyticsDashboard();
+        }
+        patchAnalyticsLiveValues();
+    });
 }
 function startAnalyticsLiveTicker() {
     if (analyticsState.liveTicker)
@@ -1196,7 +1273,7 @@ function startAnalyticsLiveTicker() {
             return;
         }
         updateAnalyticsLiveDuration();
-        requestAnalyticsDashboardRefresh();
+        requestAnalyticsLiveRender();
     }, 1000);
 }
 function stopAnalyticsLiveTicker() {
@@ -1209,6 +1286,87 @@ function updateAnalyticsLiveDuration() {
     if (!analyticsState.liveRun || analyticsState.liveRun.endedAt)
         return;
     analyticsState.liveRun.durationMs = Math.max(0, Date.now() - analyticsState.liveRun.startedAtMs);
+}
+function patchAnalyticsLiveValues() {
+    if (!analyticsState.liveRun)
+        return;
+    updateAnalyticsLiveDuration();
+    const liveRun = analyticsState.liveRun;
+    const overall = getAnalyticsOverallSnapshot();
+    const workflowAnalytics = getAnalyticsWorkflowSnapshot();
+    const summary = overall.summary || {};
+    const workflowSummary = (overall.perWorkflow || [])
+        .find(item => item.workflowId === liveRun.workflowId)?.summary || null;
+    const selectedWorkflowSummary = workflowAnalytics?.summary || null;
+    patchAnalyticsBoundText('overall-total-runs', formatAnalyticsNumber(summary.totalRuns));
+    patchAnalyticsBoundText('overall-total-actions', formatAnalyticsNumber(summary.totalActions));
+    patchAnalyticsBoundText('overall-total-duration', formatAnalyticsDuration(summary.totalDurationMs));
+    patchAnalyticsBoundText('overall-average-duration', formatAnalyticsDuration(summary.averageDurationMs));
+    patchAnalyticsBoundText('overall-average-duration-meta', `${formatAnalyticsDuration(summary.averageDurationMs)} avg run`);
+    patchAnalyticsBoundText('overall-longest-duration', formatAnalyticsDuration(summary.longestDurationMs));
+    patchAnalyticsBoundText('overall-shortest-duration-meta', `${formatAnalyticsDuration(summary.shortestDurationMs)} shortest`);
+    patchAnalyticsBoundText('overall-actions', formatAnalyticsNumber(summary.totalActions));
+    patchAnalyticsBoundText('overall-average-actions-meta', `${formatAnalyticsNumber(summary.averageActions, 1)} avg/run`);
+    if (workflowSummary) {
+        const workflowSelector = `[data-analytics-workflow-id="${analyticsEscapeSelectorAttr(liveRun.workflowId)}"]`;
+        patchAnalyticsText(`${workflowSelector}[data-analytics-bind="workflow-total-duration"]`, formatAnalyticsDuration(workflowSummary.totalDurationMs));
+        patchAnalyticsText(`${workflowSelector}[data-analytics-bind="workflow-average-duration"]`, formatAnalyticsDuration(workflowSummary.averageDurationMs));
+    }
+    if (analyticsState.selectedWorkflowId === liveRun.workflowId && selectedWorkflowSummary) {
+        patchAnalyticsBoundText('detail-total-runs', formatAnalyticsNumber(selectedWorkflowSummary.totalRuns));
+        patchAnalyticsBoundText('detail-total-duration', formatAnalyticsDuration(selectedWorkflowSummary.totalDurationMs));
+        patchAnalyticsBoundText('detail-average-duration-meta', `${formatAnalyticsDuration(selectedWorkflowSummary.averageDurationMs)} avg`);
+        patchAnalyticsBoundText('detail-shortest-duration', formatAnalyticsDuration(selectedWorkflowSummary.shortestDurationMs));
+        patchAnalyticsBoundText('detail-longest-duration-meta', `${formatAnalyticsDuration(selectedWorkflowSummary.longestDurationMs)} slowest`);
+    }
+    const duration = formatAnalyticsDuration(liveRun.durationMs);
+    patchAnalyticsLiveFieldText(liveRun.id, 'duration', duration);
+    patchAnalyticsLiveFieldText(liveRun.id, 'loops', formatAnalyticsLoops(liveRun));
+    patchAnalyticsLiveFieldText(liveRun.id, 'actions', formatAnalyticsNumber(liveRun.actions || 0));
+    patchAnalyticsLiveFieldAttribute(liveRun.id, 'duration-bar', 'data-duration-ms', String(Number(liveRun.durationMs) || 0));
+    patchAnalyticsLiveFieldAttribute(liveRun.id, 'activity-bar', 'data-duration-ms', String(Number(liveRun.durationMs) || 0));
+    patchAnalyticsLiveFieldAttribute(liveRun.id, 'activity-bar', 'title', `${formatAnalyticsStatus(liveRun.status)} Â· ${duration}`);
+    patchAnalyticsScaledBars('[data-analytics-field="duration-bar"]', 'width', 4);
+    patchAnalyticsScaledBars('[data-analytics-field="activity-bar"]', 'height', 8, true);
+}
+function patchAnalyticsBoundText(bindName, value) {
+    patchAnalyticsText(`[data-analytics-bind="${analyticsEscapeSelectorAttr(bindName)}"]`, value);
+}
+function patchAnalyticsLiveFieldText(liveRunId, field, value) {
+    patchAnalyticsText(analyticsLiveFieldSelector(liveRunId, field), value);
+}
+function patchAnalyticsLiveFieldAttribute(liveRunId, field, attr, value) {
+    patchAnalyticsAttribute(analyticsLiveFieldSelector(liveRunId, field), attr, value);
+}
+function patchAnalyticsText(selector, value) {
+    document.querySelectorAll(selector).forEach(element => {
+        const next = value === null || value === undefined ? '' : String(value);
+        if (element.textContent !== next) {
+            element.textContent = next;
+        }
+    });
+}
+function patchAnalyticsAttribute(selector, attr, value) {
+    document.querySelectorAll(selector).forEach(element => {
+        const next = value === null || value === undefined ? '' : String(value);
+        if (element.getAttribute(attr) !== next) {
+            element.setAttribute(attr, next);
+        }
+    });
+}
+function patchAnalyticsScaledBars(selector, styleProp, minPercent, round = false) {
+    const bars = [...document.querySelectorAll(selector)];
+    if (!bars.length)
+        return;
+    const max = Math.max(...bars.map(bar => Number(bar.dataset.durationMs) || 0), 1);
+    bars.forEach(bar => {
+        const duration = Number(bar.dataset.durationMs) || 0;
+        const raw = Math.max(minPercent, (duration / max) * 100);
+        const next = `${round ? Math.round(raw) : raw}%`;
+        if (bar.style[styleProp] !== next) {
+            bar.style[styleProp] = next;
+        }
+    });
 }
 function getCurrentAnalyticsLiveRun(overall) {
     if (!analyticsState.liveRun)
@@ -1382,13 +1540,17 @@ function renderWorkflowSelect(overall) {
             name: historical?.workflowName || 'Deleted Workflow'
         });
     }
-    select.innerHTML = options.length
+    const html = options.length
         ? options.map(option => `
       <option value="${analyticsEscapeHtml(option.id)}" ${option.id === analyticsState.selectedWorkflowId ? 'selected' : ''}>
         ${analyticsEscapeHtml(option.name)}
       </option>
     `).join('')
         : '<option value="">No workflows</option>';
+    setAnalyticsSectionHtml('workflowSelect', select, html);
+    if ((analyticsState.selectedWorkflowId || '') !== select.value) {
+        select.value = analyticsState.selectedWorkflowId || '';
+    }
 }
 function renderOverallSummary(overall) {
     const summary = overall.summary || {};
@@ -1403,11 +1565,11 @@ function renderOverallSummary(overall) {
       </div>
       <div class="analytics-hero-headline">
         <div class="analytics-hero-eyebrow">Total executions</div>
-        <div class="analytics-hero-value">${formatAnalyticsNumber(totalRuns)}</div>
+        <div class="analytics-hero-value" data-analytics-bind="overall-total-runs">${formatAnalyticsNumber(totalRuns)}</div>
         <div class="analytics-hero-substats">
           <span><strong>${formatAnalyticsNumber(overall.workflowsRun || 0)}</strong> workflows</span>
           <span class="analytics-dot-sep"></span>
-          <span><strong>${formatAnalyticsNumber(summary.totalActions)}</strong> actions</span>
+          <span><strong data-analytics-bind="overall-total-actions">${formatAnalyticsNumber(summary.totalActions)}</strong> actions</span>
           <span class="analytics-dot-sep"></span>
           <span>last run <strong>${analyticsEscapeHtml(formatAnalyticsDate(summary.lastRunAt, true))}</strong></span>
         </div>
@@ -1419,10 +1581,10 @@ function renderOverallSummary(overall) {
     </div>
   `;
     const cards = [
-        { icon: 'clock', accent: '#22d3ee', label: 'Time Automated', value: formatAnalyticsDuration(summary.totalDurationMs), meta: `${formatAnalyticsDuration(summary.averageDurationMs)} avg run` },
-        { icon: 'gauge', accent: '#60a5fa', label: 'Avg Duration', value: formatAnalyticsDuration(summary.averageDurationMs), meta: `across ${formatAnalyticsNumber(totalRuns)} runs` },
-        { icon: 'gauge', accent: '#a78bfa', label: 'Longest Run', value: formatAnalyticsDuration(summary.longestDurationMs), meta: `${formatAnalyticsDuration(summary.shortestDurationMs)} shortest` },
-        { icon: 'layers', accent: '#818cf8', label: 'Actions', value: formatAnalyticsNumber(summary.totalActions), meta: `${formatAnalyticsNumber(summary.averageActions, 1)} avg/run` },
+        { icon: 'clock', accent: '#22d3ee', label: 'Time Automated', value: formatAnalyticsDuration(summary.totalDurationMs), meta: `${formatAnalyticsDuration(summary.averageDurationMs)} avg run`, valueBind: 'overall-total-duration', metaBind: 'overall-average-duration-meta' },
+        { icon: 'gauge', accent: '#60a5fa', label: 'Avg Duration', value: formatAnalyticsDuration(summary.averageDurationMs), meta: `across ${formatAnalyticsNumber(totalRuns)} runs`, valueBind: 'overall-average-duration' },
+        { icon: 'gauge', accent: '#a78bfa', label: 'Longest Run', value: formatAnalyticsDuration(summary.longestDurationMs), meta: `${formatAnalyticsDuration(summary.shortestDurationMs)} shortest`, valueBind: 'overall-longest-duration', metaBind: 'overall-shortest-duration-meta' },
+        { icon: 'layers', accent: '#818cf8', label: 'Actions', value: formatAnalyticsNumber(summary.totalActions), meta: `${formatAnalyticsNumber(summary.averageActions, 1)} avg/run`, valueBind: 'overall-actions', metaBind: 'overall-average-actions-meta' },
         { icon: 'calendar', accent: '#fbbf24', label: 'Last Run', value: formatAnalyticsDate(summary.lastRunAt, true), meta: summary.lastStatus ? formatAnalyticsStatus(summary.lastStatus) : 'No runs' }
     ];
     const tiles = cards.map(card => `
@@ -1431,19 +1593,19 @@ function renderOverallSummary(overall) {
         <span class="analytics-metric-icon">${analyticsIcon(card.icon)}</span>
         <span class="analytics-metric-label">${analyticsEscapeHtml(card.label)}</span>
       </div>
-      <div class="analytics-metric-value">${analyticsEscapeHtml(card.value)}</div>
-      <div class="analytics-metric-meta">${analyticsEscapeHtml(card.meta)}</div>
+      <div class="analytics-metric-value"${card.valueBind ? ` data-analytics-bind="${card.valueBind}"` : ''}>${analyticsEscapeHtml(card.value)}</div>
+      <div class="analytics-metric-meta"${card.metaBind ? ` data-analytics-bind="${card.metaBind}"` : ''}>${analyticsEscapeHtml(card.meta)}</div>
     </div>
   `).join('');
-    analyticsElements.summaryGrid.innerHTML = hero + tiles;
+    setAnalyticsSectionHtml('summaryGrid', analyticsElements.summaryGrid, hero + tiles);
 }
 function renderWorkflowPerformanceTable(overall) {
     const rows = overall.perWorkflow || [];
     if (!rows.length) {
-        analyticsElements.workflowTable.innerHTML = '<div class="analytics-empty">No workflow runs yet</div>';
+        setAnalyticsSectionHtml('workflowTable', analyticsElements.workflowTable, '<div class="analytics-empty">No workflow runs yet</div>');
         return;
     }
-    analyticsElements.workflowTable.innerHTML = `
+    const html = `
     <div class="analytics-table-row analytics-table-head workflow-performance-row">
       <div>Workflow</div>
       <div>Runs</div>
@@ -1464,8 +1626,8 @@ function renderWorkflowPerformanceTable(overall) {
             <span class="analytics-table-primary-text">${analyticsEscapeHtml(item.workflowName || 'Untitled Workflow')}</span>
           </div>
           <div class="analytics-num">${formatAnalyticsNumber(summary.totalRuns)}</div>
-          <div class="analytics-num">${analyticsEscapeHtml(formatAnalyticsDuration(summary.totalDurationMs))}</div>
-          <div class="analytics-num">${analyticsEscapeHtml(formatAnalyticsDuration(summary.averageDurationMs))}</div>
+          <div class="analytics-num" data-analytics-workflow-id="${analyticsEscapeHtml(item.workflowId)}" data-analytics-bind="workflow-total-duration">${analyticsEscapeHtml(formatAnalyticsDuration(summary.totalDurationMs))}</div>
+          <div class="analytics-num" data-analytics-workflow-id="${analyticsEscapeHtml(item.workflowId)}" data-analytics-bind="workflow-average-duration">${analyticsEscapeHtml(formatAnalyticsDuration(summary.averageDurationMs))}</div>
           <div class="analytics-success-cell">
             <span class="analytics-meter"><span style="width:${Math.round(rate * 100)}%"></span></span>
             <span class="analytics-num">${analyticsEscapeHtml(formatAnalyticsPercent(summary.successRate))}</span>
@@ -1475,16 +1637,18 @@ function renderWorkflowPerformanceTable(overall) {
       `;
     }).join('')}
   `;
+    if (!setAnalyticsSectionHtml('workflowTable', analyticsElements.workflowTable, html))
+        return;
     analyticsElements.workflowTable.querySelectorAll('[data-workflow-id]').forEach(row => {
         row.addEventListener('click', () => {
             analyticsState.selectedWorkflowId = row.dataset.workflowId;
-            renderAnalyticsDashboard();
+            renderAnalyticsDashboard({ showLoading: false });
         });
     });
 }
 function renderWorkflowDetail(analytics) {
     if (!analytics || !analytics.summary) {
-        analyticsElements.workflowDetail.innerHTML = '<div class="analytics-empty">Select a workflow above to see its run history.</div>';
+        setAnalyticsSectionHtml('workflowDetail', analyticsElements.workflowDetail, '<div class="analytics-empty">Select a workflow above to see its run history.</div>');
         return;
     }
     const summary = analytics.summary;
@@ -1496,7 +1660,7 @@ function renderWorkflowDetail(analytics) {
     const completionMeta = activeRuns
         ? `${formatAnalyticsNumber(activeRuns)} active, ${formatAnalyticsNumber(summary.errorRuns)} errors`
         : `${formatAnalyticsNumber(summary.errorRuns)} errors`;
-    analyticsElements.workflowDetail.innerHTML = `
+    const html = `
     <div class="workflow-analytics-title">
       <h2>${analyticsEscapeHtml(workflowName)}</h2>
       <span class="analytics-status ${analyticsEscapeHtml(lastStatus)}">
@@ -1511,7 +1675,7 @@ function renderWorkflowDetail(analytics) {
           <span class="analytics-metric-icon">${analyticsIcon('runs')}</span>
           <span class="analytics-metric-label">Runs</span>
         </div>
-        <div class="analytics-metric-value">${formatAnalyticsNumber(summary.totalRuns)}</div>
+        <div class="analytics-metric-value" data-analytics-bind="detail-total-runs">${formatAnalyticsNumber(summary.totalRuns)}</div>
         <div class="analytics-metric-meta">${formatAnalyticsNumber(summary.dryRuns)} dry runs</div>
       </div>
       <div class="analytics-metric" style="--metric-accent:#60a5fa">
@@ -1519,16 +1683,16 @@ function renderWorkflowDetail(analytics) {
           <span class="analytics-metric-icon">${analyticsIcon('clock')}</span>
           <span class="analytics-metric-label">Total Time</span>
         </div>
-        <div class="analytics-metric-value">${analyticsEscapeHtml(formatAnalyticsDuration(summary.totalDurationMs))}</div>
-        <div class="analytics-metric-meta">${analyticsEscapeHtml(formatAnalyticsDuration(summary.averageDurationMs))} avg</div>
+        <div class="analytics-metric-value" data-analytics-bind="detail-total-duration">${analyticsEscapeHtml(formatAnalyticsDuration(summary.totalDurationMs))}</div>
+        <div class="analytics-metric-meta" data-analytics-bind="detail-average-duration-meta">${analyticsEscapeHtml(formatAnalyticsDuration(summary.averageDurationMs))} avg</div>
       </div>
       <div class="analytics-metric" style="--metric-accent:#a78bfa">
         <div class="analytics-metric-top">
           <span class="analytics-metric-icon">${analyticsIcon('gauge')}</span>
           <span class="analytics-metric-label">Fastest</span>
         </div>
-        <div class="analytics-metric-value">${analyticsEscapeHtml(formatAnalyticsDuration(summary.shortestDurationMs))}</div>
-        <div class="analytics-metric-meta">${analyticsEscapeHtml(formatAnalyticsDuration(summary.longestDurationMs))} slowest</div>
+        <div class="analytics-metric-value" data-analytics-bind="detail-shortest-duration">${analyticsEscapeHtml(formatAnalyticsDuration(summary.shortestDurationMs))}</div>
+        <div class="analytics-metric-meta" data-analytics-bind="detail-longest-duration-meta">${analyticsEscapeHtml(formatAnalyticsDuration(summary.longestDurationMs))} slowest</div>
       </div>
       <div class="analytics-metric" style="--metric-accent:#34d399">
         <div class="analytics-metric-top">
@@ -1543,7 +1707,7 @@ function renderWorkflowDetail(analytics) {
     <div class="analytics-duration-list">
       <div class="analytics-duration-caption">Run durations</div>
       ${runs.length ? runs.slice(0, 12).map(run => `
-        <div class="analytics-duration-row">
+        <div class="analytics-duration-row"${analyticsLiveAttrs(run)}>
           ${(() => {
         const status = normalizeAnalyticsStatus(run.status);
         return `
@@ -1555,17 +1719,18 @@ function renderWorkflowDetail(analytics) {
             </span>
           </div>
           <div class="analytics-duration-bar">
-            <span class="status-${analyticsEscapeHtml(status || 'idle')}" style="width: ${Math.max(4, ((Number(run.durationMs) || 0) / maxDuration) * 100)}%"></span>
+            <span class="status-${analyticsEscapeHtml(status || 'idle')}" data-analytics-field="duration-bar" data-duration-ms="${Number(run.durationMs) || 0}"${analyticsLiveFieldAttrs(run, 'duration-bar')} style="width: ${Math.max(4, ((Number(run.durationMs) || 0) / maxDuration) * 100)}%"></span>
           </div>
             `;
     })()}
-          <div class="analytics-duration-value">${analyticsEscapeHtml(formatAnalyticsDuration(run.durationMs))}</div>
+          <div class="analytics-duration-value"${analyticsLiveFieldAttrs(run, 'duration')}>${analyticsEscapeHtml(formatAnalyticsDuration(run.durationMs))}</div>
         </div>
       `).join('') : '<div class="analytics-empty">No runs recorded</div>'}
     </div>
 
     ${renderRunLog(runs)}
   `;
+    setAnalyticsSectionHtml('workflowDetail', analyticsElements.workflowDetail, html);
 }
 function renderRunLog(runs) {
     if (!runs.length)
@@ -1580,7 +1745,7 @@ function renderRunLog(runs) {
         <div>Actions</div>
       </div>
       ${runs.map(run => `
-        <div class="analytics-table-row run-log-row">
+        <div class="analytics-table-row run-log-row"${analyticsLiveAttrs(run)}>
           ${(() => {
         const status = normalizeAnalyticsStatus(run.status);
         return `
@@ -1588,9 +1753,9 @@ function renderRunLog(runs) {
           <div><span class="analytics-status ${analyticsEscapeHtml(status)}"><span class="analytics-status-dot ${analyticsEscapeHtml(status)}"></span>${analyticsEscapeHtml(formatAnalyticsStatus(status))}</span></div>
             `;
     })()}
-          <div class="analytics-num">${analyticsEscapeHtml(formatAnalyticsDuration(run.durationMs))}</div>
-          <div class="analytics-num">${analyticsEscapeHtml(formatAnalyticsLoops(run))}</div>
-          <div class="analytics-num">${formatAnalyticsNumber(run.actions || 0)}</div>
+          <div class="analytics-num"${analyticsLiveFieldAttrs(run, 'duration')}>${analyticsEscapeHtml(formatAnalyticsDuration(run.durationMs))}</div>
+          <div class="analytics-num"${analyticsLiveFieldAttrs(run, 'loops')}>${analyticsEscapeHtml(formatAnalyticsLoops(run))}</div>
+          <div class="analytics-num"${analyticsLiveFieldAttrs(run, 'actions')}>${formatAnalyticsNumber(run.actions || 0)}</div>
         </div>
       `).join('')}
     </div>
@@ -1598,10 +1763,10 @@ function renderRunLog(runs) {
 }
 function renderRecentRuns(runs) {
     if (!runs.length) {
-        analyticsElements.recentRuns.innerHTML = '<div class="analytics-empty">No workflow runs yet</div>';
+        setAnalyticsSectionHtml('recentRuns', analyticsElements.recentRuns, '<div class="analytics-empty">No workflow runs yet</div>');
         return;
     }
-    analyticsElements.recentRuns.innerHTML = `
+    const html = `
     <div class="analytics-table-row analytics-table-head recent-run-row">
       <div>Workflow</div>
       <div>Status</div>
@@ -1609,7 +1774,7 @@ function renderRecentRuns(runs) {
       <div>Started</div>
     </div>
     ${runs.map(run => `
-      <button class="analytics-table-row recent-run-row" data-workflow-id="${analyticsEscapeHtml(run.workflowId)}">
+      <button class="analytics-table-row recent-run-row" data-workflow-id="${analyticsEscapeHtml(run.workflowId)}"${analyticsLiveAttrs(run)}>
         ${(() => {
         const status = normalizeAnalyticsStatus(run.status || 'idle');
         return `
@@ -1620,15 +1785,17 @@ function renderRecentRuns(runs) {
         <div><span class="analytics-status ${analyticsEscapeHtml(status)}"><span class="analytics-status-dot ${analyticsEscapeHtml(status)}"></span>${analyticsEscapeHtml(formatAnalyticsStatus(status))}</span></div>
           `;
     })()}
-        <div class="analytics-num">${analyticsEscapeHtml(formatAnalyticsDuration(run.durationMs))}</div>
+        <div class="analytics-num"${analyticsLiveFieldAttrs(run, 'duration')}>${analyticsEscapeHtml(formatAnalyticsDuration(run.durationMs))}</div>
         <div class="analytics-num analytics-muted">${analyticsEscapeHtml(formatAnalyticsDate(run.startedAt, true))}</div>
       </button>
     `).join('')}
   `;
+    if (!setAnalyticsSectionHtml('recentRuns', analyticsElements.recentRuns, html))
+        return;
     analyticsElements.recentRuns.querySelectorAll('[data-workflow-id]').forEach(row => {
         row.addEventListener('click', () => {
             analyticsState.selectedWorkflowId = row.dataset.workflowId;
-            renderAnalyticsDashboard();
+            renderAnalyticsDashboard({ showLoading: false });
         });
     });
 }
@@ -1697,7 +1864,7 @@ function renderActivityBars(runs) {
         const h = Math.max(8, Math.round(((Number(run.durationMs) || 0) / max) * 100));
         const status = normalizeAnalyticsStatus(run.status || 'idle');
         const title = `${formatAnalyticsStatus(status)} · ${formatAnalyticsDuration(run.durationMs)}`;
-        return `<span class="analytics-bar status-${analyticsEscapeHtml(status)}" style="height:${h}%" title="${analyticsEscapeHtml(title)}"></span>`;
+        return `<span class="analytics-bar status-${analyticsEscapeHtml(status)}" data-analytics-field="activity-bar" data-duration-ms="${Number(run.durationMs) || 0}"${analyticsLiveFieldAttrs(run, 'activity-bar')} style="height:${h}%" title="${analyticsEscapeHtml(title)}"></span>`;
     }).join('');
     return `<div class="analytics-activity-bars">${bars}</div>`;
 }
@@ -1712,6 +1879,22 @@ function analyticsIcon(name) {
     };
     const body = icons[name] || icons.runs;
     return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+}
+function analyticsLiveAttrs(run) {
+    if (!run?.isLive || !run.id)
+        return '';
+    return ` data-live-run-id="${analyticsEscapeHtml(run.id)}"`;
+}
+function analyticsLiveFieldAttrs(run, field) {
+    if (!run?.isLive || !run.id)
+        return '';
+    return ` data-live-run-id="${analyticsEscapeHtml(run.id)}" data-live-field="${analyticsEscapeHtml(field)}"`;
+}
+function analyticsLiveFieldSelector(liveRunId, field) {
+    return `[data-live-run-id="${analyticsEscapeSelectorAttr(liveRunId)}"][data-live-field="${analyticsEscapeSelectorAttr(field)}"]`;
+}
+function analyticsEscapeSelectorAttr(value) {
+    return String(value ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 /* ---------- Formatting ---------- */
 function formatAnalyticsNumber(value, decimals = 0) {
