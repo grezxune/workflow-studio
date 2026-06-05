@@ -16,6 +16,8 @@ let waitCountdown = null;
 let waitCountdownFill = null;
 let waitCountdownLabel = null;
 let waitCountdownTime = null;
+let executionVariables = null;
+let executionStatusCard = null;
 
 // Execution state
 let currentExecution = {
@@ -28,12 +30,16 @@ let currentExecution = {
 };
 
 // Scheduled stop state
-let scheduledStopTime = null; // Date object or null
+let scheduledStopTime = null; // Date object or null — the exact (possibly random) stop time
+let scheduledStopSetAt = null; // Date the stop was armed (for draining-progress math)
+let scheduledStopRangeLabel = ''; // human label of the window the time was drawn from
 let scheduledStopInterval = null;
 let scheduledFollowUpWorkflowId = null; // workflow ID to run after stop
 
 // Current wait state (for syncing to floating bar)
 let currentWait = { active: false, duration: 0, remaining: 0, paused: false };
+let executionVariablesState = [];
+let executionVariableTicker = null;
 
 /**
  * Initialize execution elements
@@ -50,6 +56,8 @@ function initExecutionUI() {
   waitCountdownFill = document.getElementById('wait-countdown-fill');
   waitCountdownLabel = document.getElementById('wait-countdown-label');
   waitCountdownTime = document.getElementById('wait-countdown-time');
+  executionVariables = document.getElementById('execution-variables');
+  executionStatusCard = executionOverlay?.querySelector('.execution-status');
 
   // Setup button listeners
   btnPauseExecution.addEventListener('click', togglePause);
@@ -62,6 +70,14 @@ function initExecutionUI() {
 
   window.workflowAPI.onWaitTick((data) => {
     updateWaitCountdown(data.duration, data.remaining, data.paused);
+  });
+
+  window.workflowAPI.onExecutionVariablesSync?.((data) => {
+    syncExecutionVariables(data.variables);
+  });
+
+  window.workflowAPI.onExecutionVariableChanged?.((data) => {
+    updateExecutionVariable(data.variable);
   });
 
   // Hide countdown when a new (non-wait) action starts
@@ -90,14 +106,11 @@ function initExecutionUI() {
       }
       // Sync scheduled stop timer if active
       if (scheduledStopTime) {
-        const remaining = scheduledStopTime - new Date();
-        if (remaining > 0) {
-          await window.workflowAPI.updateFloatingBarStopTimer({
-            visible: true,
-            text: `\u23F1 ${formatCountdown(remaining)}`
-          });
-        }
+        await window.workflowAPI.updateFloatingBarStopTimer(buildStopTimerPayload());
       }
+      await window.workflowAPI.syncFloatingBarVariables?.({
+        variables: executionVariablesState
+      });
     });
   }
 
@@ -114,28 +127,29 @@ function initExecutionUI() {
     executionOverlay.classList.remove('hidden');
   });
 
-  // Scheduled stop controls
+  window.workflowAPI.onFloatingBarResetVariableClicked?.((data) => {
+    if (data?.variableId) {
+      resetExecutionVariable(data.variableId);
+    }
+  });
+
+  // Scheduled stop controls (clock-time range)
   const btnSetStopTime = document.getElementById('btn-set-stop-time');
   const btnClearStopTime = document.getElementById('btn-clear-stop-time');
   const btnClearStopTimeActive = document.getElementById('btn-clear-stop-time-active');
-  const stopTimeInput = document.getElementById('scheduled-stop-time');
+  const stopFromInput = document.getElementById('scheduled-stop-from');
+  const stopToInput = document.getElementById('scheduled-stop-to');
 
   if (btnSetStopTime) {
-    btnSetStopTime.addEventListener('click', () => {
-      const val = stopTimeInput?.value;
-      if (!val) return;
-      setScheduledStop(val);
-    });
+    btnSetStopTime.addEventListener('click', submitScheduledStopFromInputs);
   }
 
-  if (stopTimeInput) {
-    stopTimeInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        const val = stopTimeInput.value;
-        if (val) setScheduledStop(val);
-      }
+  [stopFromInput, stopToInput].forEach((input) => {
+    if (!input) return;
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submitScheduledStopFromInputs();
     });
-  }
+  });
 
   if (btnClearStopTime) {
     btnClearStopTime.addEventListener('click', clearScheduledStop);
@@ -144,6 +158,17 @@ function initExecutionUI() {
   if (btnClearStopTimeActive) {
     btnClearStopTimeActive.addEventListener('click', clearScheduledStop);
   }
+
+  // Allow the floating bar to arm/clear the auto-stop (it owns no timer of its own).
+  window.workflowAPI.onFloatingBarSetStopTime?.((data) => {
+    if (!data?.from) return;
+    const followUpSelect = document.getElementById('scheduled-stop-workflow');
+    setScheduledStop({ from: data.from, to: data.to || '', followUpId: followUpSelect?.value || null });
+  });
+
+  window.workflowAPI.onFloatingBarClearStopTime?.(() => {
+    clearScheduledStop();
+  });
 }
 
 window.initExecutionUI = initExecutionUI;
@@ -167,6 +192,7 @@ function showExecutionOverlay(workflow) {
   executionWorkflowName.textContent = workflow.name || 'Running Workflow';
   updateProgressDisplay();
   executionAction.textContent = 'Starting...';
+  syncExecutionVariables(workflow.variables || []);
 
   // Reset pause button and update hotkey labels
   currentExecution.isPaused = false;
@@ -177,6 +203,10 @@ function showExecutionOverlay(workflow) {
   // Reset scheduled stop UI
   clearScheduledStop();
   populateFollowUpWorkflows();
+
+  // If the user hasn't scheduled their own stop, fall back to the global
+  // "Max run time" cap so the run can't go forever.
+  armMaxRunTimeStop();
 
   // Hide floating bar native window, show overlay
   window.workflowAPI.hideFloatingBar();
@@ -192,6 +222,8 @@ function showExecutionOverlay(workflow) {
  */
 function hideExecutionOverlay() {
   executionOverlay.classList.add('hidden');
+  stopExecutionVariableTicker();
+  syncExecutionVariables([]);
 
   // Close floating bar native window
   window.workflowAPI.closeFloatingBar();

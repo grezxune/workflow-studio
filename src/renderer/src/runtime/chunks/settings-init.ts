@@ -17,6 +17,8 @@ let typingSpeedMaxInput = null;
 let mouseMoveDurationInput = null;
 let aiOpenRouterKeyInput = null;
 let aiPreferredModelSelect = null;
+let maxRunTimeEnabledCheckbox = null;
+let maxRunTimeInput = null;
 
 /**
  * Initialize settings view
@@ -35,6 +37,8 @@ function initSettingsView() {
   mouseMoveDurationInput = document.getElementById('mouse-move-duration');
   aiOpenRouterKeyInput = document.getElementById('ai-openrouter-key');
   aiPreferredModelSelect = document.getElementById('ai-preferred-model');
+  maxRunTimeEnabledCheckbox = document.getElementById('max-run-time-enabled');
+  maxRunTimeInput = document.getElementById('max-run-time-value');
 
   // Setup event listeners
   setupSettingsEvents();
@@ -92,23 +96,37 @@ function setupSettingsEvents() {
     await saveSettings({ overshoot: state.settings.overshoot });
   });
 
-  // Typing speed
+  // Typing speed (delay per character)
   typingSpeedMinInput.addEventListener('change', async () => {
     state.settings.typingSpeed = state.settings.typingSpeed || {};
-    state.settings.typingSpeed.min = parseInt(typingSpeedMinInput.value) || 50;
+    state.settings.typingSpeed.min = readDurationMs('typing-speed-min') ?? 50;
     await saveSettings({ typingSpeed: state.settings.typingSpeed });
   });
 
   typingSpeedMaxInput.addEventListener('change', async () => {
     state.settings.typingSpeed = state.settings.typingSpeed || {};
-    state.settings.typingSpeed.max = parseInt(typingSpeedMaxInput.value) || 150;
+    state.settings.typingSpeed.max = readDurationMs('typing-speed-max') ?? 150;
     await saveSettings({ typingSpeed: state.settings.typingSpeed });
   });
 
   // Mouse movement duration
   mouseMoveDurationInput.addEventListener('change', async () => {
-    state.settings.mouseMoveDuration = parseInt(mouseMoveDurationInput.value) || 250;
+    state.settings.mouseMoveDuration = readDurationMs('mouse-move-duration') ?? 250;
     await saveSettings({ mouseMoveDuration: state.settings.mouseMoveDuration });
+  });
+
+  // Max run time
+  maxRunTimeEnabledCheckbox?.addEventListener('change', async () => {
+    state.settings.maxRunTime = state.settings.maxRunTime || {};
+    state.settings.maxRunTime.enabled = maxRunTimeEnabledCheckbox.checked;
+    await saveSettings({ maxRunTime: state.settings.maxRunTime });
+  });
+
+  maxRunTimeInput?.addEventListener('change', async () => {
+    state.settings.maxRunTime = state.settings.maxRunTime || {};
+    const ms = readDurationMs('max-run-time-value');
+    state.settings.maxRunTime.ms = (Number.isFinite(ms) && ms > 0) ? ms : (120 * 60 * 1000);
+    await saveSettings({ maxRunTime: state.settings.maxRunTime });
   });
 
   // OpenRouter API key
@@ -167,13 +185,18 @@ async function loadSettingsIntoUI() {
   const overshoot = state.settings.overshoot || {};
   overshootCheckbox.checked = overshoot.enabled !== false;
 
-  // Typing speed
+  // Typing speed (delay per character)
   const typing = state.settings.typingSpeed || {};
-  typingSpeedMinInput.value = typing.min || 50;
-  typingSpeedMaxInput.value = typing.max || 150;
+  setDurationRangeMs('typing-speed-min', 'typing-speed-max', typing.min ?? 50, typing.max ?? 150);
 
   // Mouse movement duration
-  mouseMoveDurationInput.value = state.settings.mouseMoveDuration ?? 250;
+  setDurationMs('mouse-move-duration', state.settings.mouseMoveDuration ?? 250);
+
+  // Max run time
+  const maxRunTime = state.settings.maxRunTime || {};
+  maxRunTimeEnabledCheckbox.checked = maxRunTime.enabled !== false;
+  const maxRunMs = maxRunTime.ms ?? (maxRunTime.minutes != null ? maxRunTime.minutes * 60000 : 120 * 60 * 1000);
+  setDurationMs('max-run-time-value', maxRunMs, { unit: 'min' });
   
   // AI assistant settings
   const ai = state.settings.ai || {};

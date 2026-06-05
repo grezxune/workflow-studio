@@ -74,6 +74,10 @@ function setupIPCListeners() {
     updateLoopProgress(data);
   });
 
+  window.workflowAPI.onAudioPlay?.((data) => {
+    playWorkflowSound(data);
+  });
+
   // Listen for panic trigger
   window.workflowAPI.onPanicTriggered?.((data) => {
     updateExecutionState('idle');

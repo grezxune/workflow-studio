@@ -638,6 +638,9 @@ function setupIPCListeners() {
     window.workflowAPI.onLoopStarted((data) => {
         updateLoopProgress(data);
     });
+    window.workflowAPI.onAudioPlay?.((data) => {
+        playWorkflowSound(data);
+    });
     // Listen for panic trigger
     window.workflowAPI.onPanicTriggered?.((data) => {
         updateExecutionState('idle');
@@ -671,6 +674,177 @@ function updateExecutionState(newState) {
 }
 /**
  * Show a toast notification
+ */
+
+// ===== app-audio.ts =====
+/* Renderer audio playback (notification sounds + TTS), ported from WIP app.js. */
+async function playWorkflowSound({ soundId, volume = 100, repeatCount = 1, speechText = '' } = {}) {
+    if (!soundId || soundId === 'none')
+        return;
+    if (soundId === 'tts') {
+        await speakWorkflowText({ text: speechText, volume });
+        return;
+    }
+    if (soundId.startsWith?.('custom:')) {
+        await playCustomWorkflowSound({ soundId, volume, repeatCount });
+        return;
+    }
+    const ctx = getAudioContext();
+    if (!ctx)
+        return;
+    if (ctx.state === 'suspended') {
+        try {
+            await ctx.resume();
+        }
+        catch (error) {
+            console.warn('Failed to resume audio context:', error);
+        }
+    }
+    const startAt = ctx.currentTime + 0.01;
+    const gainBoost = Math.max(0.25, Math.min((volume || 100) / 100, 3));
+    const plays = Math.max(1, Math.min(10, parseInt(repeatCount, 10) || 1));
+    const repeatSpacing = 0.3;
+    const patterns = {
+        beep: [
+            { freq: 880, duration: 0.16, type: 'sine', gain: 0.5 }
+        ],
+        asterisk: [
+            { freq: 880, duration: 0.09, type: 'triangle', gain: 0.42 },
+            { freq: 1320, duration: 0.12, type: 'triangle', gain: 0.38, offset: 0.09 }
+        ],
+        exclamation: [
+            { freq: 740, duration: 0.09, type: 'square', gain: 0.35 },
+            { freq: 988, duration: 0.14, type: 'square', gain: 0.3, offset: 0.1 }
+        ],
+        hand: [
+            { freq: 220, duration: 0.22, type: 'sawtooth', gain: 0.26 },
+            { freq: 164, duration: 0.22, type: 'sawtooth', gain: 0.22, offset: 0.02 }
+        ],
+        question: [
+            { freq: 523.25, duration: 0.08, type: 'triangle', gain: 0.34 },
+            { freq: 659.25, duration: 0.08, type: 'triangle', gain: 0.34, offset: 0.08 },
+            { freq: 783.99, duration: 0.12, type: 'triangle', gain: 0.3, offset: 0.16 }
+        ],
+        ping: [
+            { freq: 1046.5, duration: 0.08, type: 'sine', gain: 0.46 },
+            { freq: 1318.5, duration: 0.18, type: 'sine', gain: 0.24, offset: 0.05 }
+        ],
+        success: [
+            { freq: 523.25, duration: 0.07, type: 'triangle', gain: 0.3 },
+            { freq: 659.25, duration: 0.08, type: 'triangle', gain: 0.34, offset: 0.08 },
+            { freq: 783.99, duration: 0.12, type: 'triangle', gain: 0.38, offset: 0.16 }
+        ],
+        warning: [
+            { freq: 660, duration: 0.14, type: 'square', gain: 0.3 },
+            { freq: 560, duration: 0.14, type: 'square', gain: 0.26, offset: 0.16 }
+        ],
+        alarm: [
+            { freq: 880, duration: 0.16, type: 'square', gain: 0.36 },
+            { freq: 698.46, duration: 0.16, type: 'square', gain: 0.32, offset: 0.18 }
+        ],
+        radar: [
+            { freq: 440, duration: 0.08, type: 'sine', gain: 0.18 },
+            { freq: 660, duration: 0.08, type: 'sine', gain: 0.22, offset: 0.1 },
+            { freq: 880, duration: 0.08, type: 'sine', gain: 0.26, offset: 0.2 }
+        ],
+        powerup: [
+            { freq: 392, duration: 0.08, type: 'triangle', gain: 0.28 },
+            { freq: 523.25, duration: 0.08, type: 'triangle', gain: 0.32, offset: 0.08 },
+            { freq: 659.25, duration: 0.08, type: 'triangle', gain: 0.36, offset: 0.16 },
+            { freq: 783.99, duration: 0.12, type: 'triangle', gain: 0.4, offset: 0.24 }
+        ]
+    };
+    const sequence = patterns[soundId] || patterns.beep;
+    for (let playIndex = 0; playIndex < plays; playIndex++) {
+        const repeatOffset = playIndex * repeatSpacing;
+        sequence.forEach((tone) => {
+            const oscillator = ctx.createOscillator();
+            const gainNode = ctx.createGain();
+            const toneStart = startAt + repeatOffset + (tone.offset || 0);
+            const peak = Math.min(tone.gain * gainBoost, 1.5);
+            oscillator.type = tone.type || 'sine';
+            oscillator.frequency.setValueAtTime(tone.freq, toneStart);
+            gainNode.gain.setValueAtTime(0.0001, toneStart);
+            gainNode.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0001), toneStart + 0.01);
+            gainNode.gain.exponentialRampToValueAtTime(0.0001, toneStart + tone.duration);
+            oscillator.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            oscillator.start(toneStart);
+            oscillator.stop(toneStart + tone.duration + 0.02);
+        });
+    }
+}
+async function playCustomWorkflowSound({ soundId, volume = 100, repeatCount = 1 } = {}) {
+    const sound = (editorState?.systemSounds || []).find?.((item) => item.id === soundId);
+    if (!sound?.path)
+        return;
+    const ctx = getAudioContext();
+    if (!ctx)
+        return;
+    if (ctx.state === 'suspended') {
+        try {
+            await ctx.resume();
+        }
+        catch (error) {
+            console.warn('Failed to resume audio context for custom sound:', error);
+        }
+    }
+    const plays = Math.max(1, Math.min(10, parseInt(repeatCount, 10) || 1));
+    const gain = Math.max(0.1, Math.min((volume || 100) / 100, 5));
+    for (let index = 0; index < plays; index++) {
+        await new Promise((resolve) => {
+            const audio = new Audio(pathToFileUrl(sound.path));
+            audio.volume = 1;
+            const source = ctx.createMediaElementSource(audio);
+            const gainNode = ctx.createGain();
+            gainNode.gain.value = gain;
+            source.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            const cleanup = () => {
+                try {
+                    source.disconnect();
+                    gainNode.disconnect();
+                }
+                catch { }
+                resolve();
+            };
+            audio.addEventListener('ended', cleanup, { once: true });
+            audio.addEventListener('error', cleanup, { once: true });
+            audio.play().catch((error) => {
+                console.warn('Failed to play custom sound:', error);
+                resolve();
+            });
+        });
+    }
+}
+async function speakWorkflowText({ text, volume = 100 } = {}) {
+    if (!text?.trim())
+        return;
+    try {
+        const result = await window.workflowAPI.speakText?.({ text: text.trim(), volume });
+        if (result?.success) {
+            return;
+        }
+    }
+    catch (error) {
+        console.warn('Platform TTS failed, falling back to browser speech:', error);
+    }
+    if (!window.speechSynthesis)
+        return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text.trim());
+    utterance.volume = Math.max(0.1, Math.min((volume || 100) / 100, 1));
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    window.speechSynthesis.speak(utterance);
+}
+function pathToFileUrl(filePath) {
+    const normalized = String(filePath).replace(/\\/g, '/');
+    return normalized.startsWith('file://') ? normalized : `file:///${encodeURI(normalized)}`;
+}
+window.playWorkflowSound = playWorkflowSound;
+/**
+ * Update execution state in UI
  */
 
 // ===== app-ui.ts =====
@@ -6282,6 +6456,8 @@ let typingSpeedMaxInput = null;
 let mouseMoveDurationInput = null;
 let aiOpenRouterKeyInput = null;
 let aiPreferredModelSelect = null;
+let maxRunTimeEnabledCheckbox = null;
+let maxRunTimeInput = null;
 /**
  * Initialize settings view
  */
@@ -6299,6 +6475,8 @@ function initSettingsView() {
     mouseMoveDurationInput = document.getElementById('mouse-move-duration');
     aiOpenRouterKeyInput = document.getElementById('ai-openrouter-key');
     aiPreferredModelSelect = document.getElementById('ai-preferred-model');
+    maxRunTimeEnabledCheckbox = document.getElementById('max-run-time-enabled');
+    maxRunTimeInput = document.getElementById('max-run-time-value');
     // Setup event listeners
     setupSettingsEvents();
     // Load current settings into UI
@@ -6344,21 +6522,33 @@ function setupSettingsEvents() {
         state.settings.overshoot.enabled = overshootCheckbox.checked;
         await saveSettings({ overshoot: state.settings.overshoot });
     });
-    // Typing speed
+    // Typing speed (delay per character)
     typingSpeedMinInput.addEventListener('change', async () => {
         state.settings.typingSpeed = state.settings.typingSpeed || {};
-        state.settings.typingSpeed.min = parseInt(typingSpeedMinInput.value) || 50;
+        state.settings.typingSpeed.min = readDurationMs('typing-speed-min') ?? 50;
         await saveSettings({ typingSpeed: state.settings.typingSpeed });
     });
     typingSpeedMaxInput.addEventListener('change', async () => {
         state.settings.typingSpeed = state.settings.typingSpeed || {};
-        state.settings.typingSpeed.max = parseInt(typingSpeedMaxInput.value) || 150;
+        state.settings.typingSpeed.max = readDurationMs('typing-speed-max') ?? 150;
         await saveSettings({ typingSpeed: state.settings.typingSpeed });
     });
     // Mouse movement duration
     mouseMoveDurationInput.addEventListener('change', async () => {
-        state.settings.mouseMoveDuration = parseInt(mouseMoveDurationInput.value) || 250;
+        state.settings.mouseMoveDuration = readDurationMs('mouse-move-duration') ?? 250;
         await saveSettings({ mouseMoveDuration: state.settings.mouseMoveDuration });
+    });
+    // Max run time
+    maxRunTimeEnabledCheckbox?.addEventListener('change', async () => {
+        state.settings.maxRunTime = state.settings.maxRunTime || {};
+        state.settings.maxRunTime.enabled = maxRunTimeEnabledCheckbox.checked;
+        await saveSettings({ maxRunTime: state.settings.maxRunTime });
+    });
+    maxRunTimeInput?.addEventListener('change', async () => {
+        state.settings.maxRunTime = state.settings.maxRunTime || {};
+        const ms = readDurationMs('max-run-time-value');
+        state.settings.maxRunTime.ms = (Number.isFinite(ms) && ms > 0) ? ms : (120 * 60 * 1000);
+        await saveSettings({ maxRunTime: state.settings.maxRunTime });
     });
     // OpenRouter API key
     aiOpenRouterKeyInput?.addEventListener('change', async () => {
@@ -6408,12 +6598,16 @@ async function loadSettingsIntoUI() {
     // Overshoot
     const overshoot = state.settings.overshoot || {};
     overshootCheckbox.checked = overshoot.enabled !== false;
-    // Typing speed
+    // Typing speed (delay per character)
     const typing = state.settings.typingSpeed || {};
-    typingSpeedMinInput.value = typing.min || 50;
-    typingSpeedMaxInput.value = typing.max || 150;
+    setDurationRangeMs('typing-speed-min', 'typing-speed-max', typing.min ?? 50, typing.max ?? 150);
     // Mouse movement duration
-    mouseMoveDurationInput.value = state.settings.mouseMoveDuration ?? 250;
+    setDurationMs('mouse-move-duration', state.settings.mouseMoveDuration ?? 250);
+    // Max run time
+    const maxRunTime = state.settings.maxRunTime || {};
+    maxRunTimeEnabledCheckbox.checked = maxRunTime.enabled !== false;
+    const maxRunMs = maxRunTime.ms ?? (maxRunTime.minutes != null ? maxRunTime.minutes * 60000 : 120 * 60 * 1000);
+    setDurationMs('max-run-time-value', maxRunMs, { unit: 'min' });
     // AI assistant settings
     const ai = state.settings.ai || {};
     aiOpenRouterKeyInput.value = ai.openRouterApiKey || '';
@@ -7006,6 +7200,8 @@ let waitCountdown = null;
 let waitCountdownFill = null;
 let waitCountdownLabel = null;
 let waitCountdownTime = null;
+let executionVariables = null;
+let executionStatusCard = null;
 // Execution state
 let currentExecution = {
     workflow: null,
@@ -7016,11 +7212,15 @@ let currentExecution = {
     isPaused: false
 };
 // Scheduled stop state
-let scheduledStopTime = null; // Date object or null
+let scheduledStopTime = null; // Date object or null — the exact (possibly random) stop time
+let scheduledStopSetAt = null; // Date the stop was armed (for draining-progress math)
+let scheduledStopRangeLabel = ''; // human label of the window the time was drawn from
 let scheduledStopInterval = null;
 let scheduledFollowUpWorkflowId = null; // workflow ID to run after stop
 // Current wait state (for syncing to floating bar)
 let currentWait = { active: false, duration: 0, remaining: 0, paused: false };
+let executionVariablesState = [];
+let executionVariableTicker = null;
 /**
  * Initialize execution elements
  */
@@ -7036,6 +7236,8 @@ function initExecutionUI() {
     waitCountdownFill = document.getElementById('wait-countdown-fill');
     waitCountdownLabel = document.getElementById('wait-countdown-label');
     waitCountdownTime = document.getElementById('wait-countdown-time');
+    executionVariables = document.getElementById('execution-variables');
+    executionStatusCard = executionOverlay?.querySelector('.execution-status');
     // Setup button listeners
     btnPauseExecution.addEventListener('click', togglePause);
     btnStopExecution.addEventListener('click', stopExecution);
@@ -7045,6 +7247,12 @@ function initExecutionUI() {
     });
     window.workflowAPI.onWaitTick((data) => {
         updateWaitCountdown(data.duration, data.remaining, data.paused);
+    });
+    window.workflowAPI.onExecutionVariablesSync?.((data) => {
+        syncExecutionVariables(data.variables);
+    });
+    window.workflowAPI.onExecutionVariableChanged?.((data) => {
+        updateExecutionVariable(data.variable);
     });
     // Hide countdown when a new (non-wait) action starts
     window.workflowAPI.onActionStarted((data) => {
@@ -7070,14 +7278,11 @@ function initExecutionUI() {
             }
             // Sync scheduled stop timer if active
             if (scheduledStopTime) {
-                const remaining = scheduledStopTime - new Date();
-                if (remaining > 0) {
-                    await window.workflowAPI.updateFloatingBarStopTimer({
-                        visible: true,
-                        text: `\u23F1 ${formatCountdown(remaining)}`
-                    });
-                }
+                await window.workflowAPI.updateFloatingBarStopTimer(buildStopTimerPayload());
             }
+            await window.workflowAPI.syncFloatingBarVariables?.({
+                variables: executionVariablesState
+            });
         });
     }
     // Listen for floating bar button events
@@ -7090,34 +7295,44 @@ function initExecutionUI() {
     window.workflowAPI.onFloatingBarExpandClicked(() => {
         executionOverlay.classList.remove('hidden');
     });
-    // Scheduled stop controls
+    window.workflowAPI.onFloatingBarResetVariableClicked?.((data) => {
+        if (data?.variableId) {
+            resetExecutionVariable(data.variableId);
+        }
+    });
+    // Scheduled stop controls (clock-time range)
     const btnSetStopTime = document.getElementById('btn-set-stop-time');
     const btnClearStopTime = document.getElementById('btn-clear-stop-time');
     const btnClearStopTimeActive = document.getElementById('btn-clear-stop-time-active');
-    const stopTimeInput = document.getElementById('scheduled-stop-time');
+    const stopFromInput = document.getElementById('scheduled-stop-from');
+    const stopToInput = document.getElementById('scheduled-stop-to');
     if (btnSetStopTime) {
-        btnSetStopTime.addEventListener('click', () => {
-            const val = stopTimeInput?.value;
-            if (!val)
-                return;
-            setScheduledStop(val);
-        });
+        btnSetStopTime.addEventListener('click', submitScheduledStopFromInputs);
     }
-    if (stopTimeInput) {
-        stopTimeInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                const val = stopTimeInput.value;
-                if (val)
-                    setScheduledStop(val);
-            }
+    [stopFromInput, stopToInput].forEach((input) => {
+        if (!input)
+            return;
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter')
+                submitScheduledStopFromInputs();
         });
-    }
+    });
     if (btnClearStopTime) {
         btnClearStopTime.addEventListener('click', clearScheduledStop);
     }
     if (btnClearStopTimeActive) {
         btnClearStopTimeActive.addEventListener('click', clearScheduledStop);
     }
+    // Allow the floating bar to arm/clear the auto-stop (it owns no timer of its own).
+    window.workflowAPI.onFloatingBarSetStopTime?.((data) => {
+        if (!data?.from)
+            return;
+        const followUpSelect = document.getElementById('scheduled-stop-workflow');
+        setScheduledStop({ from: data.from, to: data.to || '', followUpId: followUpSelect?.value || null });
+    });
+    window.workflowAPI.onFloatingBarClearStopTime?.(() => {
+        clearScheduledStop();
+    });
 }
 window.initExecutionUI = initExecutionUI;
 // Initialize when DOM is ready
@@ -7137,6 +7352,7 @@ function showExecutionOverlay(workflow) {
     executionWorkflowName.textContent = workflow.name || 'Running Workflow';
     updateProgressDisplay();
     executionAction.textContent = 'Starting...';
+    syncExecutionVariables(workflow.variables || []);
     // Reset pause button and update hotkey labels
     currentExecution.isPaused = false;
     setPauseButtonState(false);
@@ -7146,6 +7362,9 @@ function showExecutionOverlay(workflow) {
     // Reset scheduled stop UI
     clearScheduledStop();
     populateFollowUpWorkflows();
+    // If the user hasn't scheduled their own stop, fall back to the global
+    // "Max run time" cap so the run can't go forever.
+    armMaxRunTimeStop();
     // Hide floating bar native window, show overlay
     window.workflowAPI.hideFloatingBar();
     executionOverlay.classList.remove('hidden');
@@ -7158,6 +7377,8 @@ function showExecutionOverlay(workflow) {
  */
 function hideExecutionOverlay() {
     executionOverlay.classList.add('hidden');
+    stopExecutionVariableTicker();
+    syncExecutionVariables([]);
     // Close floating bar native window
     window.workflowAPI.closeFloatingBar();
     // Clear any scheduled stop timer
@@ -7191,6 +7412,133 @@ function updateLoopProgress(data) {
     currentExecution.currentAction = 0;
     updateProgressDisplay();
 }
+
+// ===== execution-variables.ts =====
+/* Execution — live workflow variables panel (ported from WIP). Shares the execution runtime global scope. */
+function syncExecutionVariables(variables) {
+    executionVariablesState = Array.isArray(variables)
+        ? variables.map((variable) => ({
+            ...variable,
+            value: !!variable.value
+        }))
+        : [];
+    renderExecutionVariables();
+}
+function updateExecutionVariable(nextVariable) {
+    if (!nextVariable?.id)
+        return;
+    const index = executionVariablesState.findIndex((variable) => variable.id === nextVariable.id);
+    if (index === -1) {
+        executionVariablesState.push({ ...nextVariable, value: !!nextVariable.value });
+    }
+    else {
+        executionVariablesState[index] = {
+            ...executionVariablesState[index],
+            ...nextVariable,
+            value: !!nextVariable.value
+        };
+    }
+    renderExecutionVariables();
+}
+function renderExecutionVariables() {
+    if (!executionVariables)
+        return;
+    const visibleVariables = executionVariablesState.filter((variable) => {
+        const target = variable.indicatorTarget || 'both';
+        return target === 'overlay' || target === 'both';
+    });
+    executionVariables.innerHTML = visibleVariables.map((variable) => {
+        const active = !!variable.value;
+        const timestamp = active && variable.triggeredAt
+            ? `<span class="execution-variable-meta">Hit ${escapeHtml(formatVariableTimestamp(variable.triggeredAt))} · ${escapeHtml(formatTimeSince(variable.triggeredAt))}</span>`
+            : '';
+        return `
+      <div class="execution-variable-pill ${active ? 'active' : ''}" style="--pill-color:${escapeHtml(variable.color || '#06b6d4')}">
+        <span class="execution-variable-dot"></span>
+        <span class="execution-variable-content">
+          <span>${escapeHtml(variable.name || 'Variable')}</span>
+          ${timestamp}
+        </span>
+        ${active ? `
+          <button class="execution-variable-reset" data-variable-id="${escapeHtml(variable.id)}" title="Reset ${escapeHtml(variable.name || 'variable')}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 12a9 9 0 1 0 3-6.7"/>
+              <polyline points="3 3 3 9 9 9"/>
+            </svg>
+          </button>
+        ` : ''}
+      </div>
+    `;
+    }).join('');
+    executionVariables.classList.toggle('hidden', visibleVariables.length === 0);
+    if (visibleVariables.some((variable) => variable.value && variable.triggeredAt)) {
+        startExecutionVariableTicker();
+    }
+    else {
+        stopExecutionVariableTicker();
+    }
+    const flashingVariable = visibleVariables.find((variable) => variable.value);
+    if (executionStatusCard) {
+        if (flashingVariable) {
+            executionStatusCard.style.setProperty('--execution-flash-color', flashingVariable.color || '#06b6d4');
+            executionStatusCard.classList.add('flashing');
+        }
+        else {
+            executionStatusCard.classList.remove('flashing');
+        }
+    }
+    executionVariables.querySelectorAll('[data-variable-id]').forEach((button) => {
+        button.addEventListener('click', () => {
+            resetExecutionVariable(button.dataset.variableId);
+        });
+    });
+}
+async function resetExecutionVariable(variableId) {
+    if (!variableId)
+        return;
+    await window.workflowAPI.resetWorkflowVariable?.(variableId);
+}
+function startExecutionVariableTicker() {
+    stopExecutionVariableTicker();
+    if (!executionVariablesState.some((variable) => variable.value && variable.triggeredAt))
+        return;
+    executionVariableTicker = setInterval(() => {
+        renderExecutionVariables();
+    }, 1000);
+}
+function stopExecutionVariableTicker() {
+    if (executionVariableTicker) {
+        clearInterval(executionVariableTicker);
+        executionVariableTicker = null;
+    }
+}
+/**
+ * Format milliseconds for display
+ */
+function formatVariableTimestamp(isoString) {
+    const date = new Date(isoString);
+    if (Number.isNaN(date.getTime()))
+        return 'unknown';
+    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+}
+function formatTimeSince(isoString) {
+    const date = new Date(isoString);
+    const diff = Date.now() - date.getTime();
+    if (Number.isNaN(date.getTime()) || diff < 0)
+        return 'just now';
+    const totalSeconds = Math.floor(diff / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0)
+        return `${hours}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s ago`;
+    if (minutes > 0)
+        return `${minutes}m ${String(seconds).padStart(2, '0')}s ago`;
+    return `${seconds}s ago`;
+}
+/**
+ * Populate the follow-up workflow dropdown with all available workflows
+ */
 
 // ===== execution-controls.ts =====
 /**
@@ -7302,9 +7650,7 @@ function hideWaitCountdown() {
 }
 
 // ===== execution-schedule.ts =====
-/**
- * Format milliseconds for display
- */
+/* Execution — scheduled-stop (random range) + max-run-time + follow-up (ported from WIP). Shares the execution runtime global scope. */
 function formatMs(ms) {
     if (ms >= 1000) {
         return `${(ms / 1000).toFixed(1)}s`;
@@ -7312,21 +7658,74 @@ function formatMs(ms) {
     return `${Math.round(ms)}ms`;
 }
 /**
- * Set a scheduled stop time from a time string (HH:MM)
+ * Resolve a clock-time range (HH:MM strings) into one concrete stop time.
+ *
+ * - Only `from` given → exact stop at that time.
+ * - `from`–`to` given → a random moment within the window.
+ * Handles ranges that cross midnight and windows that have already elapsed
+ * (rolled to tomorrow), and never picks a moment that is already in the past.
  */
-function setScheduledStop(timeStr) {
-    const [hours, minutes] = timeStr.split(':').map(Number);
+function computeRandomStopTime(fromStr, toStr) {
     const now = new Date();
-    const target = new Date();
-    target.setHours(hours, minutes, 0, 0);
-    // If the time is in the past, assume tomorrow
-    if (target <= now) {
-        target.setDate(target.getDate() + 1);
+    const atToday = (str) => {
+        const [h, m] = str.split(':').map(Number);
+        const d = new Date();
+        d.setHours(h, m, 0, 0);
+        return d;
+    };
+    const from = atToday(fromStr);
+    if (!toStr) {
+        if (from <= now)
+            from.setDate(from.getDate() + 1);
+        return { target: from, rangeLabel: `at ${formatClock(from)}` };
     }
-    scheduledStopTime = target;
-    // Capture selected follow-up workflow
+    const to = atToday(toStr);
+    if (to <= from)
+        to.setDate(to.getDate() + 1); // crosses midnight
+    if (to <= now) { // whole window already passed → tomorrow
+        from.setDate(from.getDate() + 1);
+        to.setDate(to.getDate() + 1);
+    }
+    const lower = Math.max(from.getTime(), now.getTime()); // don't pick the past
+    const upper = Math.max(to.getTime(), lower);
+    const target = new Date(lower + Math.random() * (upper - lower));
+    return { target, rangeLabel: `between ${formatClock(from)} and ${formatClock(to)}` };
+}
+/**
+ * Arm a scheduled stop from a clock-time range.
+ * @param {{from: string, to?: string, followUpId?: string|null}} opts
+ */
+function setScheduledStop({ from, to = '', followUpId } = {}) {
+    if (!from)
+        return;
+    const { target, rangeLabel } = computeRandomStopTime(from, to);
+    // Follow-up workflow: honour an explicit id, else read the overlay select.
     const followUpSelect = document.getElementById('scheduled-stop-workflow');
-    scheduledFollowUpWorkflowId = followUpSelect?.value || null;
+    const resolvedFollowUp = followUpId !== undefined ? followUpId : (followUpSelect?.value || null);
+    // Reflect the range that was used back into the inputs (e.g. when armed from the bar).
+    const fromInput = document.getElementById('scheduled-stop-from');
+    const toInput = document.getElementById('scheduled-stop-to');
+    if (fromInput)
+        fromInput.value = from;
+    if (toInput)
+        toInput.value = to;
+    armScheduledStopAt(target, {
+        rangeLabel,
+        followUpId: resolvedFollowUp,
+        pickedText: to ? `Picked ${rangeLabel}` : ''
+    });
+}
+/**
+ * Arm the auto-stop for a concrete target time and start the countdown.
+ * Shared by the clock-range scheduler and the max-run-time fallback.
+ * @param {Date} target
+ * @param {{rangeLabel?: string, followUpId?: string|null, pickedText?: string}} opts
+ */
+function armScheduledStopAt(target, { rangeLabel = '', followUpId = null, pickedText = '' } = {}) {
+    scheduledStopTime = target;
+    scheduledStopSetAt = new Date();
+    scheduledStopRangeLabel = rangeLabel;
+    scheduledFollowUpWorkflowId = followUpId;
     // Show active state, hide input controls
     const controls = document.getElementById('scheduled-stop-controls');
     const active = document.getElementById('scheduled-stop-active');
@@ -7337,9 +7736,14 @@ function setScheduledStop(timeStr) {
         thenSection.classList.add('hidden');
     if (active)
         active.classList.remove('hidden');
+    // Show which window the time was drawn from
+    const picked = document.getElementById('scheduled-stop-picked');
+    if (picked)
+        picked.textContent = pickedText;
     // Show follow-up info in active area
     const thenInfo = document.getElementById('scheduled-stop-then-info');
     if (thenInfo && scheduledFollowUpWorkflowId) {
+        const followUpSelect = document.getElementById('scheduled-stop-workflow');
         const opt = followUpSelect?.querySelector(`option[value="${scheduledFollowUpWorkflowId}"]`);
         thenInfo.textContent = `Then run: ${opt?.textContent || scheduledFollowUpWorkflowId}`;
     }
@@ -7353,10 +7757,58 @@ function setScheduledStop(timeStr) {
     scheduledStopInterval = setInterval(updateScheduledStopDisplay, 1000);
 }
 /**
+ * When the user hasn't scheduled their own stop, fall back to the global
+ * "Max run time" setting: stop the run after the configured length, randomised
+ * by ±30 minutes so runs don't all end at exactly the same elapsed time.
+ */
+function armMaxRunTimeStop() {
+    const cfg = state.settings?.maxRunTime;
+    // Canonical milliseconds, with a fallback for any legacy minutes-based value.
+    const baseMs = Number(cfg?.ms ?? (cfg?.minutes != null ? cfg.minutes * 60 * 1000 : NaN));
+    if (!cfg?.enabled || !Number.isFinite(baseMs) || baseMs <= 0)
+        return;
+    const JITTER_MS = 30 * 60 * 1000; // ±30 min
+    const cappedMs = Math.max(60 * 1000, baseMs + (Math.random() * 2 - 1) * JITTER_MS);
+    const target = new Date(Date.now() + cappedMs);
+    armScheduledStopAt(target, {
+        rangeLabel: 'max run time',
+        pickedText: `Max run time — about ${Math.round(baseMs / 60000)} min ±30 min`
+    });
+}
+/**
+ * Build the rich stop-timer payload pushed to the floating bar.
+ */
+function buildStopTimerPayload() {
+    if (!scheduledStopTime)
+        return { visible: false };
+    const remaining = scheduledStopTime - new Date();
+    if (remaining <= 0)
+        return { visible: false };
+    const span = scheduledStopSetAt ? (scheduledStopTime - scheduledStopSetAt) : remaining;
+    const countdown = formatCountdown(remaining);
+    return {
+        visible: true,
+        targetLabel: formatClock(scheduledStopTime),
+        countdown,
+        remaining,
+        fraction: span > 0 ? Math.max(0, Math.min(1, remaining / span)) : 0,
+        rangeLabel: scheduledStopRangeLabel,
+        text: `⏱ ${countdown}` // legacy fallback
+    };
+}
+/**
+ * Format a Date as a short clock time, e.g. "3:27 PM".
+ */
+function formatClock(date) {
+    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+/**
  * Clear the scheduled stop
  */
 function clearScheduledStop() {
     scheduledStopTime = null;
+    scheduledStopSetAt = null;
+    scheduledStopRangeLabel = '';
     scheduledFollowUpWorkflowId = null;
     if (scheduledStopInterval) {
         clearInterval(scheduledStopInterval);
@@ -7375,6 +7827,9 @@ function clearScheduledStop() {
     const thenInfo = document.getElementById('scheduled-stop-then-info');
     if (thenInfo)
         thenInfo.textContent = '';
+    const picked = document.getElementById('scheduled-stop-picked');
+    if (picked)
+        picked.textContent = '';
     // Clear floating bar stop timer
     window.workflowAPI.updateFloatingBarStopTimer({ visible: false });
 }
@@ -7396,7 +7851,7 @@ function updateScheduledStopDisplay() {
         return;
     }
     const countdownStr = formatCountdown(remaining);
-    const targetStr = scheduledStopTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const targetStr = formatClock(scheduledStopTime);
     // Ensure active countdown is visible
     const controls = document.getElementById('scheduled-stop-controls');
     const active = document.getElementById('scheduled-stop-active');
@@ -7407,13 +7862,10 @@ function updateScheduledStopDisplay() {
     // Update overlay countdown
     const countdownEl = document.getElementById('scheduled-stop-countdown');
     if (countdownEl) {
-        countdownEl.innerHTML = `<span class="stop-countdown-value">${countdownStr}</span> <span class="stop-target-time">until ${targetStr}</span>`;
+        countdownEl.innerHTML = `<span class="stop-countdown-value">${countdownStr}</span> <span class="stop-target-time">until ${escapeHtml(targetStr)}</span>`;
     }
     // Update floating bar native window
-    window.workflowAPI.updateFloatingBarStopTimer({
-        visible: true,
-        text: `\u23F1 ${countdownStr}`
-    });
+    window.workflowAPI.updateFloatingBarStopTimer(buildStopTimerPayload());
 }
 /**
  * Format a duration in ms to a human-readable countdown string
@@ -7431,9 +7883,6 @@ function formatCountdown(ms) {
     }
     return `${seconds}s`;
 }
-/**
- * Populate the follow-up workflow dropdown with all available workflows
- */
 async function populateFollowUpWorkflows() {
     const select = document.getElementById('scheduled-stop-workflow');
     if (!select)
@@ -7480,6 +7929,19 @@ async function runFollowUpWorkflow(workflowId) {
         showToast('error', 'Error', 'Failed to start follow-up workflow');
     }
 }
+function submitScheduledStopFromInputs() {
+    const from = document.getElementById('scheduled-stop-from')?.value;
+    const to = document.getElementById('scheduled-stop-to')?.value;
+    if (!from && !to)
+        return;
+    const followUpSelect = document.getElementById('scheduled-stop-workflow');
+    setScheduledStop({ from: from || to, to: (from && to) ? to : '', followUpId: followUpSelect?.value || null });
+}
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', initExecutionUI);
+/**
+ * Show execution overlay
+ */
 
 // ===== quick-record-core.ts =====
 /**
