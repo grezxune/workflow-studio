@@ -304,9 +304,6 @@ function bindVariableAssignmentField(action, save) {
   });
 }
 
-/**
- * Update an action and save
-
 function normalizeConditionalBranchCondition(condition) {
   const normalized = condition && typeof condition === 'object'
     ? { ...condition }

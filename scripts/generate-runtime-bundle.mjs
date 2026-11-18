@@ -76,16 +76,30 @@ for (const chunk of chunkOrder) {
     throw new Error(`Missing runtime chunk: ${chunkPath}`);
   }
   const source = fs.readFileSync(chunkPath, 'utf8').trimEnd();
-  const transpiled = ts.transpileModule(source, {
+  const result = ts.transpileModule(source, {
     compilerOptions: {
       target: ts.ScriptTarget.ES2020,
       module: ts.ModuleKind.ESNext,
       removeComments: false
     },
-    fileName: chunkPath
-  }).outputText.trimEnd();
+    fileName: chunkPath,
+    reportDiagnostics: true
+  });
+  // Chunks are concatenated, so a syntax error such as an unclosed comment can
+  // swallow the next chunk and still produce valid JavaScript. Check each one alone.
+  if (result.diagnostics?.length) {
+    const messages = result.diagnostics.map((diagnostic) => {
+      const text = ts.flattenDiagnosticMessageText(diagnostic.messageText, ' ');
+      if (diagnostic.file && diagnostic.start !== undefined) {
+        const { line, character } = diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start);
+        return `${chunk}:${line + 1}:${character + 1} ${text}`;
+      }
+      return `${chunk} ${text}`;
+    });
+    throw new Error(`[gen:runtime] Runtime chunk has syntax errors:\n${messages.join('\n')}`);
+  }
   contents.push(`// ===== ${chunk} =====`);
-  contents.push(transpiled);
+  contents.push(result.outputText.trimEnd());
   contents.push('');
 }
 

@@ -3,6 +3,9 @@
 All notable changes to this project are documented in this file.
 
 ## Unreleased
+- Fixed the Conditional action editor, which failed to open since v1.6.0. An unclosed comment in `editor-variables.ts` hid its four condition helpers from the runtime bundle.
+- `gen:runtime` now checks each runtime chunk for syntax errors on its own and fails with the chunk name and line.
+- Added runtime bundle tests that every chunk parses on its own and that the bundle declares the conditional editor helpers.
 
 ## 2026-03-10
 - Fixed Electron sandboxed preload loading by emitting CommonJS preload bundles (`.cjs`) instead of ESM (`.mjs`), restoring `workflowAPI`/`overlayAPI` bridge availability in renderer windows.

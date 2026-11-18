@@ -2945,38 +2945,30 @@ function bindVariableAssignmentField(action, save) {
         save();
     });
 }
-/**
- * Update an action and save
-
 function normalizeConditionalBranchCondition(condition) {
-  const normalized = condition && typeof condition === 'object'
-    ? { ...condition }
-    : { type: 'image_present' };
-
-  if (!['image_present', 'image_absent', 'pixel_match'].includes(normalized.type)) {
-    normalized.type = 'image_present';
-  }
-
-  if (!normalized.color) {
-    normalized.color = { r: 255, g: 0, b: 0 };
-  }
-  if (!Number.isFinite(normalized.tolerance)) {
-    normalized.tolerance = 10;
-  }
-  if (!Number.isFinite(normalized.confidence)) {
-    normalized.confidence = 0.9;
-  }
-
-  return normalized;
+    const normalized = condition && typeof condition === 'object'
+        ? { ...condition }
+        : { type: 'image_present' };
+    if (!['image_present', 'image_absent', 'pixel_match'].includes(normalized.type)) {
+        normalized.type = 'image_present';
+    }
+    if (!normalized.color) {
+        normalized.color = { r: 255, g: 0, b: 0 };
+    }
+    if (!Number.isFinite(normalized.tolerance)) {
+        normalized.tolerance = 10;
+    }
+    if (!Number.isFinite(normalized.confidence)) {
+        normalized.confidence = 0.9;
+    }
+    return normalized;
 }
-
 function renderConditionalConditionFields(prefix, label, condition) {
-  const isPixel = condition.type === 'pixel_match';
-  const confidence = Math.round((condition.confidence || 0.9) * 100);
-  const tolerance = condition.tolerance || 10;
-  const colorHex = rgbToHex(condition.color);
-
-  return `
+    const isPixel = condition.type === 'pixel_match';
+    const confidence = Math.round((condition.confidence || 0.9) * 100);
+    const tolerance = condition.tolerance || 10;
+    const colorHex = rgbToHex(condition.color);
+    return `
     <div class="config-field">
       <label>${label}</label>
       <select id="${prefix}-type">
@@ -3009,59 +3001,51 @@ function renderConditionalConditionFields(prefix, label, condition) {
     </div>
   `;
 }
-
 function setConditionalConditionFieldVisibility(prefix, type) {
-  const isPixel = type === 'pixel_match';
-  document.getElementById(`${prefix}-image-field`).style.display = isPixel ? 'none' : '';
-  document.getElementById(`${prefix}-confidence-field`).style.display = isPixel ? 'none' : '';
-  document.getElementById(`${prefix}-pixel-field`).style.display = isPixel ? '' : 'none';
-  document.getElementById(`${prefix}-tolerance-field`).style.display = isPixel ? '' : 'none';
+    const isPixel = type === 'pixel_match';
+    document.getElementById(`${prefix}-image-field`).style.display = isPixel ? 'none' : '';
+    document.getElementById(`${prefix}-confidence-field`).style.display = isPixel ? 'none' : '';
+    document.getElementById(`${prefix}-pixel-field`).style.display = isPixel ? '' : 'none';
+    document.getElementById(`${prefix}-tolerance-field`).style.display = isPixel ? '' : 'none';
 }
-
 async function bindConditionalConditionEditor(prefix, condition, save) {
-  const imagePicker = await loadImageOptions(`${prefix}-image`, condition.imageId, (val) => {
-    condition.imageId = val;
-    save();
-  });
-
-  document.getElementById(`${prefix}-type`).addEventListener('change', (e) => {
-    condition.type = e.target.value;
-    setConditionalConditionFieldVisibility(prefix, e.target.value);
-    save();
-  });
-
-  document.getElementById(`${prefix}-confidence`).addEventListener('input', (e) => {
-    const val = parseInt(e.target.value);
-    document.getElementById(`${prefix}-conf-value`).textContent = `${val}%`;
-    condition.confidence = val / 100;
-    save();
-  });
-
-  document.getElementById(`${prefix}-color`).addEventListener('change', (e) => {
-    condition.color = hexToRgb(e.target.value);
-    document.getElementById(`${prefix}-color-preview`).style.background = e.target.value;
-    save();
-  });
-
-  document.getElementById(`${prefix}-tolerance`).addEventListener('input', (e) => {
-    const val = parseInt(e.target.value);
-    document.getElementById(`${prefix}-tol-value`).textContent = val;
-    condition.tolerance = val;
-    save();
-  });
-
-  document.getElementById(`${prefix}-capture-image`).addEventListener('click', () => {
-    captureImageTemplate((imageId) => {
-      condition.imageId = imageId;
-      if (imagePicker) {
-        imagePicker.setValue(imageId);
-        imagePicker.refresh();
-      }
-      save();
+    const imagePicker = await loadImageOptions(`${prefix}-image`, condition.imageId, (val) => {
+        condition.imageId = val;
+        save();
     });
-  });
-
-  return imagePicker;
+    document.getElementById(`${prefix}-type`).addEventListener('change', (e) => {
+        condition.type = e.target.value;
+        setConditionalConditionFieldVisibility(prefix, e.target.value);
+        save();
+    });
+    document.getElementById(`${prefix}-confidence`).addEventListener('input', (e) => {
+        const val = parseInt(e.target.value);
+        document.getElementById(`${prefix}-conf-value`).textContent = `${val}%`;
+        condition.confidence = val / 100;
+        save();
+    });
+    document.getElementById(`${prefix}-color`).addEventListener('change', (e) => {
+        condition.color = hexToRgb(e.target.value);
+        document.getElementById(`${prefix}-color-preview`).style.background = e.target.value;
+        save();
+    });
+    document.getElementById(`${prefix}-tolerance`).addEventListener('input', (e) => {
+        const val = parseInt(e.target.value);
+        document.getElementById(`${prefix}-tol-value`).textContent = val;
+        condition.tolerance = val;
+        save();
+    });
+    document.getElementById(`${prefix}-capture-image`).addEventListener('click', () => {
+        captureImageTemplate((imageId) => {
+            condition.imageId = imageId;
+            if (imagePicker) {
+                imagePicker.setValue(imageId);
+                imagePicker.refresh();
+            }
+            save();
+        });
+    });
+    return imagePicker;
 }
 
 // ===== editor-view-controls.ts =====
