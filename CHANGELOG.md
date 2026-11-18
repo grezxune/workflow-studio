@@ -3,6 +3,8 @@
 All notable changes to this project are documented in this file.
 
 ## Unreleased
+
+## 2026-11-18 (v1.6.4)
 - Fixed the Conditional action editor, which failed to open since v1.6.0. An unclosed comment in `editor-variables.ts` hid its four condition helpers from the runtime bundle.
 - `gen:runtime` now checks each runtime chunk for syntax errors on its own and fails with the chunk name and line.
 - Added runtime bundle tests that every chunk parses on its own and that the bundle declares the conditional editor helpers.
